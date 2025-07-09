@@ -18,6 +18,17 @@ The AviSpace app can be accessed online at https://pe6zh8-laura-berman.shinyapps
 
 Alternatively, you can download the shiny app to run locally. [View the Shiny app folder](AviSpace4.0/)
 
+# File descriptions
+
+**AviSpace4.0**
+Self contained Shiny app for download
+
+**speciesDetails.csv**
+CSV file containing total number of detections, total number of sites where the species was detected, and niche area for each of the 90 species.
+
+**GeospatialMetadata.csv**
+CSV file containing details on each of the geospatial variables used as eigenvectors in the PCA, including variable descriptions and links to the original publications and datasets.
+
 # Citation
 
 If you use AviSpace in your published work, please cite the original manuscript:
