@@ -7,7 +7,6 @@ AviSpace is a Shiny application which uses principal components analysis and rem
 
 # Functionalities
 
-## AviSpace 4.0
 1. View prefered habitat niche polygons and overlap of any two selected species
 2. View range map and range overlap of any two selected species
 3. View boxplots of any single habitat variable vs any number of species
