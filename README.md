@@ -6,7 +6,7 @@ AviSpace is a Shiny application which uses principal components analysis and rem
 ![GitHub Logo](https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png)
 
 
-![AviSpace cover image](images/AviSpace cover image.png)
+![AviSpace cover image](images/AviSpaceCoverImage.png)
 
 # Functionalities
 
