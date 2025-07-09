@@ -1,0 +1,113 @@
+﻿Variable Name,Category,Description,Source,DOI,Dataset,Used in PCA,Notes
+bio01,Climate,Mean annual air temperature,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,NO,> 95% correlation with DTM
+bio02,Climate,Mean diurnal air temperature range,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,yes,
+bio03,Climate,Isothermality,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,yes,
+bio04,Climate,Temperature seasonality,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,yes,
+bio05,Climate,Mean daily maximum air temperature of the warmest month,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,NO,> 95% correlation with DTM
+bio06,Climate,Mean daily minimum air temperature of the coldest month,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,NO,> 95% correlation with DTM
+bio07,Climate,Annual range of air temperature,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,yes,
+bio08,Climate,Mean daily mean air temperatures of the wettest quarter,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,NO,> 95% correlation with DTM
+bio09,Climate,Mean Temperature of Driest Quarter [°C*10],Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,NO,> 95% correlation with bio10
+bio10,Climate,Mean daily mean air temperatures of the warmest quarter,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,NO,> 95% correlation with DTM
+bio11,Climate,Mean Temperature of Coldest Quarter [°C*10],Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,NO,> 95% correlation with bio08
+bio12,Climate,Annual precipitation amount,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,yes,
+bio13,Climate,Precipitation amount of the wettest month,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,yes,
+bio14,Climate,Precipitation amount of the driest month,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,yes,
+bio15,Climate,Precipitation seasonality,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,yes,
+bio16,Climate,Precipitation of Wettest Quarter [mm/quarter],Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,NO,> 95% correlation with bio19
+bio17,Climate,Mean monthly precipitation amount of the driest quarter,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,yes,
+bio18,Climate,Mean monthly precipitation amount of the warmest quarter,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,yes,
+bio19,Climate,Mean monthly precipitation amount of the coldest quarter,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,NO,> 95% correlation with bio12
+fcf,Climate,Frost change frequency,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,yes,
+gdd0,Climate,Growing degree days heat sum above 0˚C,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,NO,> 95% correlation with DTM
+gdd10,Climate,Growing degree days heat sum above 10˚C,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,NO,> 95% correlation with DTM
+gdd5,Climate,Growing degree days heat sum above 5˚C,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,NO,> 95% correlation with ggd10
+gsp,Climate,Accumulated precipitation amount on growing season days TREELIM,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,yes,
+gst,Climate,Mean temperature of the growing season TREELIM,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,yes,
+ngd0,Climate,Number of growing degree days at which tas >0˚C,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,NO,> 95% correlation with swe
+ngd10,Climate,Number of growing degree days at which tas >10˚C,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,NO,> 95% correlation with DTM
+ngd5,Climate,Number of growing degree days at which tas >5˚C,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,NO,> 95% correlation with DTM
+scd,Climate,Snow cover days,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,NO,> 95% correlation with swe
+swe,Climate,Snow water equivalent,Karger et al. 2017,https://doi.org/10.1038/sdata.2017.122,https://doi.org/10.5061/dryad.kd1d4,yes,
+interStdcloud,Climate,Inter-annual cloud cover variability,Wilson and Jetz 2016,https://doi.org/10.1371/journal.pbio.1002415,https://www.earthenv.org/cloud,yes,
+intraStdcloud,Climate,Intra-annual cloud cover variability,Wilson and Jetz 2016,https://doi.org/10.1371/journal.pbio.1002415,https://www.earthenv.org/cloud,yes,
+meanCloud,Climate,Mean annual cloud cover,Wilson and Jetz 2016,https://doi.org/10.1371/journal.pbio.1002415,https://www.earthenv.org/cloud,yes,
+seasonality,Climate,Cloud cover seasonality,Wilson and Jetz 2016,https://doi.org/10.1371/journal.pbio.1002415,https://www.earthenv.org/cloud,yes,
+spatialStd,Climate,Cloud cover spatial variability,Wilson and Jetz 2016,https://doi.org/10.1371/journal.pbio.1002415,https://www.earthenv.org/cloud,yes,
+annualPET,Climate,Annual potential evapotranspiration,Title and Bemmels 2018,https://doi.org/10.1111/ecog.02880,https://doi.org/10.7302/Z2BR8Q40,NO,> 95% correlation with DTM
+aridityInd,Climate,Aridity index; index of the degree of water deficit below water need,Title and Bemmels 2018,https://doi.org/10.1111/ecog.02880,https://doi.org/10.7302/Z2BR8Q40,yes,
+climaticMoistInd,Climate,Climate moisture index; a metric of relative wetness and aridity,Title and Bemmels 2018,https://doi.org/10.1111/ecog.02880,https://doi.org/10.7302/Z2BR8Q40,yes,
+continentality,Climate,Continentality; average temperature of the warmest month - average temperature of the coldest month,Title and Bemmels 2018,https://doi.org/10.1111/ecog.02880,https://doi.org/10.7302/Z2BR8Q40,yes,
+embergerQ,Climate,Emberger's pluviothermic quotient; a metric to differentiate among Mediterranean type climates,Title and Bemmels 2018,https://doi.org/10.1111/ecog.02880,https://doi.org/10.7302/Z2BR8Q40,yes,
+PETColdQuart,Climate,Mean monthly potenatial evapotranspiration of the coldest quarter,Title and Bemmels 2018,https://doi.org/10.1111/ecog.02880,https://doi.org/10.7302/Z2BR8Q40,yes,
+PETDryQuart,Climate,Mean monthly potenatial evapotranspiration of the driest quarter,Title and Bemmels 2018,https://doi.org/10.1111/ecog.02880,https://doi.org/10.7302/Z2BR8Q40,NO,> 95% correlation with DTM
+PETseas,Climate,Monthly variability in potential evapotranspiration,Title and Bemmels 2018,https://doi.org/10.1111/ecog.02880,https://doi.org/10.7302/Z2BR8Q40,NO,> 95% correlation with DTM
+PETWarmQuart,Climate,Mean monthly potenatial evapotranspiration of the warmest quarter,Title and Bemmels 2018,https://doi.org/10.1111/ecog.02880,https://doi.org/10.7302/Z2BR8Q40,NO,> 95% correlation with DTM
+PETWetQuart,Climate,Mean monthly potenatial evapotranspiration of the wettest quarter,Title and Bemmels 2018,https://doi.org/10.1111/ecog.02880,https://doi.org/10.7302/Z2BR8Q40,yes,
+thermInd,Climate,Compensated thermicity index,Title and Bemmels 2018,https://doi.org/10.1111/ecog.02880,https://doi.org/10.7302/Z2BR8Q40,NO,> 95% correlation with DTM
+WHI_pFWOS,Climate,MODIS WInter Habitat Indices - percent frozen ground without snow,Gudex-Cross et al. 2021,https://doi.org/10.1016/j.rse.2021.112309,https://silvis.forest.wisc.edu/data/whis/,yes,
+WHI_SCV,Climate,MODIS WInter Habitat Indices - snow cover variability,Gudex-Cross et al. 2021,https://doi.org/10.1016/j.rse.2021.112309,https://silvis.forest.wisc.edu/data/whis/,yes,
+WHI_SSL,Climate,MODIS WInter Habitat Indices - snow season length,Gudex-Cross et al. 2021,https://doi.org/10.1016/j.rse.2021.112309,https://silvis.forest.wisc.edu/data/whis/,yes,
+landcover_type,Context,Land cover classification,USGS 2016,https://doi.org/10.5066/F7ZS2TM0,https://developers.google.com/earth-engine/datasets/catalog/USGS_GAP_CONUS_2011,NO,categorical variable. context only
+PRI,Disturbance,Primary vegetation percent cover,Hoskins et al. 2015,https://doi.org/10.1002/ece3.2104,https://doi.org/10.4225/08/56DCD9249B224,yes,
+SEC,Disturbance,Secondary vegetation percent cover,Hoskins et al. 2015,https://doi.org/10.1002/ece3.2104,https://doi.org/10.4225/08/56DCD9249B224,yes,
+NTL_2020,Disturbance,Night light 2020,Li et al. 2020,https://doi.org/10.1038/s41597-020-0510-y,https://doi.org/10.6084/m9.figshare.9828827.v2,yes,
+conIntact,Disturbance,Contextual intactness,Mokany et al. 2020,https://doi.org/10.1073/pnas.1918373117,https://doi.org/10.25919/5e7854cfcb97e,yes,
+NTL_Min,Disturbance,Minimum night light,Li et al. 2020,https://doi.org/10.1038/s41597-020-0510-y,https://doi.org/10.6084/m9.figshare.9828827.v2,yes,
+GHM,Disturbance,Global human modification,Kennedy et al. 2019,https://doi.org/10.1111/gcb.14549,https://doi.org/10.1111/gcb.14549,yes,
+bioIntact,Disturbance,Biodiversity intactness,Newbold et al. 2016,https://doi.org/10.1126/science.aaf2201,https://doi.org/10.5519/0009936,yes,
+exiSound,Disturbance,Existing sound,Mennitt et al. 2014,https://www.researchgate.net/profile/Daniel-Mennitt/publication/258249644_Mapping_the_extent_of_noise_on_a_national_scale_using_geospatial_models/links/53e25c7c0cf2b9d0d82f0f9d/Mapping-the-extent-of-noise-on-a-national-scale-using-geospatial-models.pdf,https://irma.nps.gov/DataStore/Reference/Profile/2217356,yes,
+impSound,Disturbance,Impacting sound,Mennitt et al. 2014,https://www.researchgate.net/profile/Daniel-Mennitt/publication/258249644_Mapping_the_extent_of_noise_on_a_national_scale_using_geospatial_models/links/53e25c7c0cf2b9d0d82f0f9d/Mapping-the-extent-of-noise-on-a-national-scale-using-geospatial-models.pdf,https://irma.nps.gov/DataStore/Reference/Profile/2217356,yes,
+GHM_ag,Disturbance,Agriculture percent cover,Theobald et al. 2020,https://doi.org/10.5194/essd-12-1953-2020,https://doi.org/10.5281/zenodo.3963013,yes,
+GHM_bu,Disturbance,Built-up percent cover,Theobald et al. 2020,https://doi.org/10.5194/essd-12-1953-2020,https://doi.org/10.5281/zenodo.3963013,yes,
+GHM_en,Disturbance,Energy production percent cover,Theobald et al. 2020,https://doi.org/10.5194/essd-12-1953-2020,https://doi.org/10.5281/zenodo.3963013,yes,
+GHM_in,Disturbance,human intrusions,Theobald et al. 2020,https://doi.org/10.5194/essd-12-1953-2020,https://doi.org/10.5281/zenodo.3963013,yes,
+GHM_tr,Disturbance,transportation percent cover,Theobald et al. 2020,https://doi.org/10.5194/essd-12-1953-2020,https://doi.org/10.5281/zenodo.3963013,yes,
+A2C,Disturbance,Access to cities,Weiss et al. 2018,https://doi.org/10.1038/nature25181,https://doi.org/10.1038/nature25181,yes,
+burn_year,Disturbance,year of the most recent fire,Wallin 2024,https://calfire-forestry.maps.arcgis.com/home/item.html?id=c3c10388e3b24cec8a954ba10458039d,https://services1.arcgis.com/jUJYIo9tSA7EHvfZ/arcgis/rest/services/California_Historic_Fire_Perimeters/FeatureServer/0,NO,data not available for all points. Used to exclude areas burned 2019-2023
+ETv1_disALEXI,Function,Atmosphere-Land EXchange Inverse disaggregation - estimated evapotranspiration,Cawse-Nicholson et al. 2021,https://doi.org/10.1109/JSTARS.2021.3111867,,yes,
+GEDI_AGB,Function,Aboveground Biomass Density,Dubayah et al. 2022,https://doi.org/10.3334/ORNLDAAC/2056,https://daac.ornl.gov/cgi-bin/dsviewer.pl?ds_id=2056,yes,
+GPP_annual,Function,gross primary production,Turner et al. 2021,https://doi.org/10.3334/ORNLDAAC/1875,https://daac.ornl.gov/cgi-bin/dsviewer.pl?ds_id=1875,yes,
+CanopyHeight,Function,Canopy height RH98,Favichron et al. 2025,https://doi.org/10.3389/frsen.2024.1459524,,yes,
+MidCanopyHeight,Function,Mid canopy height RH50,Favichron et al. 2025,https://doi.org/10.3389/frsen.2024.1459524,,yes,
+Biomass,Function,Biomass,Dubayah 2023,https://daac.ornl.gov/GEDI/guides/GEDI_L4B_Gridded_Biomass.html,https://doi.org/10.3334/ORNLDAAC/2299,yes,
+StructRich,Function,Structural richness,Dubayah 2023,https://daac.ornl.gov/GEDI/guides/GEDI_L4B_Gridded_Biomass.html,https://doi.org/10.3334/ORNLDAAC/2299,yes,
+DHI_FPAR8,Phenology,Cumulative fraction absorbed photosynthetically active radiation,Hobi et al. 2017,https://doi.org/10.1016/j.rse.2017.04.018,https://silvis.forest.wisc.edu/data/dhis/,yes,
+DHI_GPP,Phenology,Cumulative gross primary productivity,Hobi et al. 2017,https://doi.org/10.1016/j.rse.2017.04.018,https://silvis.forest.wisc.edu/data/dhis/,yes,
+DHI_LAI8,Phenology,Cumulative leaf area index,Hobi et al. 2017,https://doi.org/10.1016/j.rse.2017.04.018,https://silvis.forest.wisc.edu/data/dhis/,yes,
+DHI_NDVI,Phenology,Cumulative normalized difference vegetative index,Hobi et al. 2017,https://doi.org/10.1016/j.rse.2017.04.018,https://silvis.forest.wisc.edu/data/dhis/,yes,
+AMP,Phenology,Amplitude; maximum increase in canopy photosynthetic activity above the baseline,USGS EROS 2018,https://doi.org/10.5066/F7MW2FBS,https://doi.org/10.5066/F7PC30G1,yes,
+DUR,Phenology,Duration of the growing season,USGS EROS 2018,https://doi.org/10.5066/F7MW2FBS,https://doi.org/10.5066/F7PC30G1,yes,
+EOST,Phenology,End of season time,USGS EROS 2018,https://doi.org/10.5066/F7MW2FBS,https://doi.org/10.5066/F7PC30G1,yes,
+MAXN,Phenology,Maximum level of photosynthetic activity in the canopy,USGS EROS 2018,https://doi.org/10.5066/F7MW2FBS,https://doi.org/10.5066/F7PC30G1,yes,
+MAXT,Phenology,Time of maximum photosynthesis in the canopy,USGS EROS 2018,https://doi.org/10.5066/F7MW2FBS,https://doi.org/10.5066/F7PC30G1,yes,
+SOST,Phenology,Start of season time,USGS EROS 2018,https://doi.org/10.5066/F7MW2FBS,https://doi.org/10.5066/F7PC30G1,yes,
+Calcium,Physiology,Calcium,Zheng et al. 2025,https://doi.org/10.3334/ORNLDAAC/2403,https://doi.org/10.3334/ORNLDAAC/2403,yes,
+Cellulose,Physiology,Cellulose,Zheng et al. 2025,https://doi.org/10.3334/ORNLDAAC/2403,https://doi.org/10.3334/ORNLDAAC/2403,yes,
+Chlorophylls,Physiology,Chlorophylls,Zheng et al. 2025,https://doi.org/10.3334/ORNLDAAC/2403,https://doi.org/10.3334/ORNLDAAC/2403,yes,
+Fiber,Physiology,Fiber,Zheng et al. 2025,https://doi.org/10.3334/ORNLDAAC/2403,https://doi.org/10.3334/ORNLDAAC/2403,yes,
+Lignin,Physiology,Lignin,Zheng et al. 2025,https://doi.org/10.3334/ORNLDAAC/2403,https://doi.org/10.3334/ORNLDAAC/2403,yes,
+LMA,Physiology,LMA,Zheng et al. 2025,https://doi.org/10.3334/ORNLDAAC/2403,https://doi.org/10.3334/ORNLDAAC/2403,yes,
+Nitrogen,Physiology,Nitrogen,Zheng et al. 2025,https://doi.org/10.3334/ORNLDAAC/2403,https://doi.org/10.3334/ORNLDAAC/2403,yes,
+NSC,Physiology,NSC,Zheng et al. 2025,https://doi.org/10.3334/ORNLDAAC/2403,https://doi.org/10.3334/ORNLDAAC/2403,yes,
+Phenolics,Physiology,Phenolics,Zheng et al. 2025,https://doi.org/10.3334/ORNLDAAC/2403,https://doi.org/10.3334/ORNLDAAC/2403,yes,
+Phosphorus,Physiology,Phosphorus,Zheng et al. 2025,https://doi.org/10.3334/ORNLDAAC/2403,https://doi.org/10.3334/ORNLDAAC/2403,yes,
+Potassium,Physiology,Potassium,Zheng et al. 2025,https://doi.org/10.3334/ORNLDAAC/2403,https://doi.org/10.3334/ORNLDAAC/2403,yes,
+Starch,Physiology,Starch,Zheng et al. 2025,https://doi.org/10.3334/ORNLDAAC/2403,https://doi.org/10.3334/ORNLDAAC/2403,NO,> 95% correlation with LMA
+Sugar,Physiology,Sugar,Zheng et al. 2025,https://doi.org/10.3334/ORNLDAAC/2403,https://doi.org/10.3334/ORNLDAAC/2403,yes,
+Sulfur,Physiology,Sulfur,Zheng et al. 2025,https://doi.org/10.3334/ORNLDAAC/2403,https://doi.org/10.3334/ORNLDAAC/2403,yes,
+bdod_0_200,Terrain,bulk density at 0-200 cm depth,Batjes et al. 2020,https://doi.org/10.5194/essd-12-299-2020,https://soilgrids.org/,yes,
+cec_0_200,Terrain,cation exchange capacity at 0-200 cm depth,Batjes et al. 2020,https://doi.org/10.5194/essd-12-299-2020,https://soilgrids.org/,yes,
+cfvo_0_200,Terrain,Volumetric proportion of coarse fragments at 0-200 cm depth,Batjes et al. 2020,https://doi.org/10.5194/essd-12-299-2020,https://soilgrids.org/,yes,
+clay_0_200,Terrain,Clay content at 0-200 cm depth,Batjes et al. 2020,https://doi.org/10.5194/essd-12-299-2020,https://soilgrids.org/,yes,
+nitrogen_0_200,Terrain,Nitrogen at 0-200 cm depth,Batjes et al. 2020,https://doi.org/10.5194/essd-12-299-2020,https://soilgrids.org/,yes,
+ocd_0_200,Terrain,Organic carbon density at 0-200 cm depth,Batjes et al. 2020,https://doi.org/10.5194/essd-12-299-2020,https://soilgrids.org/,yes,
+phh2o_0_200,Terrain,pH water at 0-200 cm depth,Batjes et al. 2020,https://doi.org/10.5194/essd-12-299-2020,https://soilgrids.org/,yes,
+sand_0_200,Terrain,Sand at 0-200 cm depth,Batjes et al. 2020,https://doi.org/10.5194/essd-12-299-2020,https://soilgrids.org/,yes,
+silt_0_200,Terrain,Silt at 0-200 cm depth,Batjes et al. 2020,https://doi.org/10.5194/essd-12-299-2020,https://soilgrids.org/,yes,
+ASP_N,Terrain,Aspect northness,Amatulli et al. 2018,https://doi.org/10.1038/sdata.2018.40,https://www.earthenv.org/topography,yes,
+DTM_std,Terrain,Elevation standard deviation,Amatulli et al. 2018,https://doi.org/10.1038/sdata.2018.40,https://www.earthenv.org/topography,yes,
+DTM,Terrain,Elevation,Amatulli et al. 2018,https://doi.org/10.1038/sdata.2018.40,https://www.earthenv.org/topography,yes,
+Slope_std,Terrain,Slope standard deviation,Amatulli et al. 2018,https://doi.org/10.1038/sdata.2018.40,https://www.earthenv.org/topography,yes,
+Slope,Terrain,Slope  ,Amatulli et al. 2018,https://doi.org/10.1038/sdata.2018.40,https://www.earthenv.org/topography,yes,
+TRI,Terrain,Terrain Ruggedness Index,Amatulli et al. 2018,https://doi.org/10.1038/sdata.2018.40,https://www.earthenv.org/topography,NO,> 95% correlation with slope
