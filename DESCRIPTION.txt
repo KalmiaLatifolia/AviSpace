@@ -1,0 +1,19 @@
+Package: AviSpace
+Type: Shiny
+Title: AviSpace: Avian niche specificity in the Sierra Nevadas
+Version: 4.0
+Author: Laura Berman
+Description: A shiny app to visualize bird species niche space overlap.
+Depends: 
+  R (>= 4.1.0)
+Imports: 
+  shiny,
+  shinythemes,
+  ggplot2,
+  dplyr,
+  tidyr,
+  purrr,
+  sf,
+  factoextra,
+  rnaturalearth,
+  rnaturalearthdata
