@@ -90,7 +90,7 @@ ui <- fluidPage(
                           h6("LEFT: PCA of habitat niche space. Grey points are 
                           individual recording sites. Text indicates general landcover 
          type, more detailed landcover information is available in the 'about' tab. 
-         Filled color indicates the minimum area contour where at least 95% of 
+         Filled color indicates the minimum area contour where 95% of 
          detections of the selected species occur. 
          Bird detections are based on passive acoustic monitoring and identified using BirdNET. 
          Areas are measured in unitless niche space. 
