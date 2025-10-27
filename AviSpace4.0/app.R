@@ -94,7 +94,8 @@ ui <- fluidPage(
          detections of the selected species occur. 
          Bird detections are based on passive acoustic monitoring and identified using BirdNET. 
          Areas are measured in unitless niche space. 
-         RIGHT: Breeding range maps of the two selected species, from eBird status and trends.")
+         RIGHT: Breeding range maps of the two selected species, from eBird status and trends. 
+                             Purple color indicates area of overlap.")
                         )
                       )
              ),
