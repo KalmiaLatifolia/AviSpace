@@ -131,9 +131,9 @@ ui <- fluidPage(
              ),
              tabPanel("About",
                       div(
-                        style = "text-align:center;",
-                        img(src = 'methods figure.png', width = 800, style = "display:block; margin:auto;"),
-                        img(src = 'landcover_pca_20250522.png', width = 800, style = "display:block; margin:auto;")
+                        style = "display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; margin-bottom: 20px;",
+                        img(src = 'methods figure.png', width = 800, style = "max-width: 100%; height: auto;"),
+                        img(src = 'landcover_pca_20250522.png', width = 800, style = "max-width: 100%; height: auto;")
                       ),
                       h5("Study sites"),
                       p("AviSpace is based on data from 577 study sites distributed 
