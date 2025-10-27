@@ -130,8 +130,11 @@ ui <- fluidPage(
                       )
              ),
              tabPanel("About",
-                      img(src='methods figure.png', width=800, align = "left"),
-                      img(src='landcover_pca_20250522.png', width=800, align = "left"),
+                      div(
+                        style = "text-align:center;",
+                        img(src = 'methods figure.png', width = 800, style = "display:block; margin:auto;"),
+                        img(src = 'landcover_pca_20250522.png', width = 800, style = "display:block; margin:auto;")
+                      ),
                       h5("Study sites"),
                       p("AviSpace is based on data from 577 study sites distributed 
                       throughout the Sierra Nevada mountain range in California, USA."),
