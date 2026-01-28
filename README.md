@@ -13,7 +13,7 @@ AviSpace is a Shiny application which uses principal components analysis and rem
 
 # Accessibility
 
-The AviSpace app can be accessed online at https://pe6zh8-laura-berman.shinyapps.io/Avispace4/ 
+The AviSpace app can be accessed online at (https://kalmialatifolia.shinyapps.io/Avispace4/)
 
 Alternatively, you can download the shiny app to run locally. [View the Shiny app folder](AviSpace4.0/)
 
