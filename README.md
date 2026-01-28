@@ -63,13 +63,13 @@ pipeline.
 | Used in PCA | Was this variable used in the final principal component analysis? Yes or no | 
 | Notes | Notes. If this variable was not used in the final analysis, why? |
 
-**speciesPolygons** 
+**speciesPolygons.RDS** 
 | Variable | Description |
 |----------|-------------| 
 | species | Species common name | 
 | geometry | Multipolygon geometry of the species' niche area in PC space |
 
-**siteDetections_foliarTraits_BioCube** 
+**siteDetections_foliarTraits_BioCube.RDS** 
 | Variable | Description |
 |----------|-------------| 
 | cell_unit | ID of geographic cell in which the ARU was placed
@@ -77,7 +77,10 @@ pipeline.
 | lat | Latitude | 
 | burnYear | Year of the most recent burn. NA if no fires on record | 
 | Species Columns [5:96] | Column names are bird species names. Column values are detection rates at that site |
-
+| Variable Columns [97:182] | Column names are spatial variables as described in *GeospatialMetadata.csv*. 
+                              Column values are the weighted average of that variable within a 150 m radius buffer around the recording location |
+| geometry | Point geometry of lat/lon coordinates |
+| landcover_type | Land cover type according to USGS CONUS GAP 2011 (https://doi.org/10.5066/F7ZS2TM0) |
 
 # Citation
 
