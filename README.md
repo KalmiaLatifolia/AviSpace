@@ -77,8 +77,7 @@ pipeline.
 | lat | Latitude | 
 | burnYear | Year of the most recent burn. NA if no fires on record | 
 | Species Columns [5:96] | Column names are bird species names. Column values are detection rates at that site |
-| Variable Columns [97:182] | Column names are spatial variables as described in *GeospatialMetadata.csv*. 
-                              Column values are the weighted average of that variable within a 150 m radius buffer around the recording location |
+| Variable Columns [97:182] | Column names are spatial variables as described in *GeospatialMetadata.csv*. Column values are the weighted average of that variable within a 150 m radius buffer around the recording location |
 | geometry | Point geometry of lat/lon coordinates |
 | landcover_type | Land cover type according to USGS CONUS GAP 2011 (https://doi.org/10.5066/F7ZS2TM0) |
 
