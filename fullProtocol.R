@@ -28,6 +28,7 @@ library(basemaps)
 library(reshape2)
 library(cowplot)
 library(geosphere)
+library(scales)
 
 # working directory  -----------------------------------------------------------
 setwd("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/Draft 1")
@@ -1574,6 +1575,8 @@ ggplot(NicheRangeOverlap, aes(x = niche_overlap_percent, y = range_overlap_perce
   geom_point(data=subset(NicheRangeOverlap, NicheRangeOverlap$sisterSpecies==TRUE), color="black") +
   theme(legend.title = element_blank()) +
   stat_poly_eq(aes(label = after_stat(eq.label)), formula = y ~ x, parse = TRUE) +
+  scale_x_continuous(labels = percent_format(accuracy = 1)) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
   xlab("Niche Overlap (%)") +
   ylab("Range Overlap (%)")
 ggsave("NicheRangeOverlap_light_20250624.pdf", height=5, width=7)
@@ -1587,6 +1590,8 @@ ggplot(NicheRangeOverlap, aes(x = niche_overlap_percent, y = range_overlap_perce
   geom_point(data=subset(NicheRangeOverlap, NicheRangeOverlap$sisterSpecies==TRUE), color="white") +
   theme(legend.title = element_blank()) +
   stat_poly_eq(aes(label = after_stat(eq.label)), formula = y ~ x, parse = TRUE) +
+  scale_x_continuous(labels = percent_format(accuracy = 1)) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
   xlab("Niche Overlap (%)") +
   ylab("Range Overlap (%)")
 ggsave("NicheRangeOverlap_dark_20250515.pdf", height=5, width=7)
