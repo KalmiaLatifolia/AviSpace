@@ -36,7 +36,7 @@ pipeline.
 
 **speciesDetails.csv** - CSV file containing total number of detections,
 total number of sites where the species was detected, and niche area for
-each of the 90 species.
+each of the 90 species:
 
 | Variable | Description |
 |----------|-------------| 
@@ -48,7 +48,7 @@ each of the 90 species.
 
 **GeospatialMetadata.csv** - CSV file containing details on each of the
 geospatial variables used as eigenvectors in the PCA, including variable
-descriptions and links to the original publications and datasets.
+descriptions and links to the original publications and datasets:
 
 | Variable | Description |
 |----------|-------------| 
@@ -61,7 +61,7 @@ descriptions and links to the original publications and datasets.
 | Notes | Notes. If this variable was not used in the final analysis, why? |
 
 
-**siteDetections_foliarTraits_Biocube.rds** - Full dataset with site locations, species detection rates, and spatial variables. One row per site.
+**siteDetections_foliarTraits_Biocube.rds** - Full dataset with site locations, species detection rates, and spatial variables. One row per site:
 
 | Variable | Description |
 |----------|-------------| 
@@ -75,7 +75,7 @@ descriptions and links to the original publications and datasets.
 | landcover_type | Land cover type according to USGS CONUS GAP 2011 (https://doi.org/10.5066/F7ZS2TM0) |
 
 
-**RangeOverlaps.rds** - The overlapping geographic ranges of pairs of bird species based on breeding range maps from eBird status and trends (https://science.ebird.org/en/status-and-trends)
+**RangeOverlaps.rds** - The overlapping geographic ranges of pairs of bird species based on breeding range maps from eBird status and trends (https://science.ebird.org/en/status-and-trends):
 
 | Variable | Description |
 |----------|-------------| 
@@ -86,14 +86,14 @@ descriptions and links to the original publications and datasets.
 | overlap_area | the overlapping range area of species1 and species2 in kilometers squared |
 | overlap_percent | the percent range overlap of species1 and species2 |
 
-**speciesNicheAreas.rds** - Species habitat niche areas based on PCA of preferred habitat.
+**speciesNicheAreas.rds** - Species habitat niche areas based on PCA of preferred habitat:
 
 | Variable | Description |
 |----------|-------------|
 | species | bird species (common name) |
 | area | niche area |
 
-**NicheRangeOverlap.rds** - Percent overlaps in geographic range and habitat preference of all 4,002 pairwise species combinations.
+**NicheRangeOverlap.rds** - Percent overlaps in geographic range and habitat preference of all 4,002 pairwise species combinations:
 
 | Variable | Description |
 |----------|-------------| 
@@ -107,7 +107,7 @@ descriptions and links to the original publications and datasets.
 | sisterSpecies | are species 1 and 2 sister species? |
 
 
-**speciesPolygons.rds** - Multipolygon geometry describing the preferred niche of each species in principal component space
+**speciesPolygons.rds** - Multipolygon geometry describing the preferred niche of each species in principal component space:
 
 | Variable | Description |
 |----------|-------------| 
