@@ -1566,6 +1566,8 @@ write_rds(NicheRangeOverlapDot, "NicheRangeOverlap_dotNames_20250624.rds")
 
 # plot it ----------------------------------------------------------------------
 
+
+
 # light
 ggplot(NicheRangeOverlap, aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
   geom_smooth(aes(fill = congeneric), method = "lm", alpha = 0.2) +  
@@ -1602,6 +1604,15 @@ ggplot(NicheRangeOverlap, aes(x = niche_overlap_percent, y = range_overlap_perce
   geom_point() +
   facet_grid(~congeneric)
 ggsave("NicheRangeOverlap_points_20250624.pdf", height=5, width=7)
+
+
+################################################################################
+# ANCOVA
+################################################################################
+
+m1 <- lm(range_overlap_percent ~ niche_overlap_percent * congeneric, data = NicheRangeOverlap)
+summary(m1)
+anova(m1)
 
 ################################################################################
 # Figure 2 niche areas 
