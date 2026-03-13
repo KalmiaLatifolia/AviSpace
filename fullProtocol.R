@@ -29,6 +29,7 @@ library(reshape2)
 library(cowplot)
 library(geosphere)
 library(scales)
+library(patchwork)
 
 # working directory  -----------------------------------------------------------
 setwd("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/Draft 1")
@@ -795,12 +796,12 @@ roundedPCA <- cbind(roundedCounts, traitsPCA$x)
 
 
 ################################################################################
-# PCA loadings
+# PCA loadings (supp figures)
 ################################################################################
 
 
 # what are the PCA loadings? ---------------------------------------------------
-loadings <- traitsPCA$rotation[, 1:2]  # PC1 loadings
+loadings <- traitsPCA$rotation[, 1:4]  # PC1 loadings
 loadings <- as.data.frame(loadings)
 loadings$variable <- rownames(loadings)
 rownames(loadings) <- NULL
@@ -811,7 +812,7 @@ tidy$fileName <- NULL
 loadings <- merge(loadings, tidy, by.x= "variable", by.y= "VariableName")
 loadings$FileName <- NULL
 
-# plot loadings
+# plot loadings - supplemental figure 1
 ggplot(loadings, aes(x=reorder(variable, abs(PC1)), y=abs(PC1), fill=Category)) +
   scale_fill_manual(values = c("#309898", "#8A2D3B", "#A0C878", "#27548A", "#F5C45E", "#644A07", "#8E7DBE")) +
   geom_col() + coord_flip() +
@@ -820,6 +821,7 @@ ggplot(loadings, aes(x=reorder(variable, abs(PC1)), y=abs(PC1), fill=Category)) 
   theme_minimal()
 ggsave("Loading_PC1_20250624.pdf", height=10, width=7)
 
+# supplemental figure 2
 ggplot(loadings, aes(x=reorder(variable, abs(PC2)), y=abs(PC2), fill=Category)) +
   scale_fill_manual(values = c("#309898", "#8A2D3B", "#A0C878", "#27548A", "#F5C45E", "#644A07", "#8E7DBE")) +
   geom_col() + coord_flip() +
@@ -828,8 +830,31 @@ ggplot(loadings, aes(x=reorder(variable, abs(PC2)), y=abs(PC2), fill=Category)) 
   theme_minimal()
 ggsave("Loading_PC2_20250624.pdf", height=10, width=7)
 
-# visualize eigenvectors
-fviz_pca_var(traitsPCA)
+# supplemental figure 3
+ggplot(loadings, aes(x=reorder(variable, abs(PC3)), y=abs(PC3), fill=Category)) +
+  scale_fill_manual(values = c("#309898", "#8A2D3B", "#A0C878", "#27548A", "#F5C45E", "#644A07", "#8E7DBE")) +
+  geom_col() + coord_flip() +
+  xlab("Habitat Variable") +
+  ylab("PC3 loading (absolute value)") +
+  theme_minimal()
+ggsave("Loading_PC3_20260313.pdf", height=10, width=7)
+
+# supplemental figure 4
+ggplot(loadings, aes(x=reorder(variable, abs(PC4)), y=abs(PC4), fill=Category)) +
+  scale_fill_manual(values = c("#309898", "#8A2D3B", "#A0C878", "#27548A", "#F5C45E", "#644A07", "#8E7DBE")) +
+  geom_col() + coord_flip() +
+  xlab("Habitat Variable") +
+  ylab("PC4 loading (absolute value)") +
+  theme_minimal()
+ggsave("Loading_PC4_20260313.pdf", height=10, width=7)
+
+# visualize eigenvectors - supplemental figure 5
+fviz_pca_var(traitsPCA, axes = c(1, 2))
+ggsave("Eigenvectors_PC12.pdf", width=10, height=10)
+
+# supplemental figure 6
+fviz_pca_var(traitsPCA, axes = c(3, 4))
+ggsave("Eigenvectors_PC34.pdf", width=10, height=10)
 
 fviz_contrib(traitsPCA, choice="var", axes = 1, sort.val ="asc") + 
   coord_flip() + labs(title = "Contribution of variables to PC1 (%)") +
@@ -858,6 +883,36 @@ landcover_pca_plot
 
 # keep it for later as a supp figure
 ggsave("landcover_pca_20250624.PDF", plot=landcover_pca_plot, height=7, width=12)
+
+# plot pc3 and pc4 - supplemental figure 7
+fviz_pca_ind(traitsPCA,
+             axes = c(2, 3),
+             label = "none",
+             habillage = siteDetections_foliarTraits_BioCube$landcover_type) +
+  guides(color = guide_legend(ncol = 1),
+         fill = guide_legend(ncol = 1),
+         shape = guide_legend(ncol = 1)) +
+  ggtitle(NULL)
+
+make_pca_plot <- function(ax) {
+  fviz_pca_ind(traitsPCA,
+               axes = ax,
+               label = "none",
+               habillage = siteDetections_foliarTraits_BioCube$landcover_type) +
+    ggtitle(paste0("PC", ax[1], " vs PC", ax[2])) +
+    theme(legend.position = "none")
+}
+
+p1 <- make_pca_plot(c(4,1))
+p2 <- make_pca_plot(c(3,1))
+p3 <- make_pca_plot(c(4,2))
+p4 <- make_pca_plot(c(3,2))
+p5 <- make_pca_plot(c(4,3))
+
+(p1 | p2) /
+  (p3 | p4) /
+  (p5 | patchwork::plot_spacer())
+ggsave("landcover_pca_PC34panels_20260313.pdf", height=10, width=10)
 
 # extract data
 landcover_pca_scores <- as.data.frame(landcover_pca_plot$data)
