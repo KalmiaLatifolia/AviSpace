@@ -30,6 +30,7 @@ library(cowplot)
 library(geosphere)
 library(scales)
 library(patchwork)
+library(MCMCglmm)
 
 # Table of contents ------------------------------------------------------------
 # 1) Processing ARU bioacoustic data  - 63
@@ -1722,13 +1723,53 @@ ggplot(NicheRangeOverlapDot, aes(x = niche_overlap_percent, y = range_overlap_pe
   theme_minimal()
 ggsave("NicheRangeOverlap_points_20260706.pdf", height=5, width=7)
 
+
 ################################################################################
 # 22) ANCOVA
 ################################################################################
 
-m1 <- lm(range_overlap_percent ~ niche_overlap_percent * congeneric, data = NicheRangeOverlap)
+# ANCOVA test - are the two slopes significantly different? --------------------
+# (deprecated. ANCOVA no longer used in final analysis)
+m1 <- lm(range_overlap_percent ~ niche_overlap_percent * congeneric, data = NicheRangeOverlapDot)
 summary(m1)
 anova(m1)
+
+
+# Mixed effects model - accounts for species non-independence (the same species appear in multiple pairs)
+
+# --- Prep ---
+# make sure mixed membership includes the same full set of species 
+all_species <- sort(unique(c(as.character(NicheRangeOverlapDot$species1),
+                             as.character(NicheRangeOverlapDot$species2))))
+NicheRangeOverlapDot$species1   <- factor(NicheRangeOverlapDot$species1, levels = all_species)
+NicheRangeOverlapDot$species2   <- factor(NicheRangeOverlapDot$species2, levels = all_species)
+NicheRangeOverlapDot$congeneric <- factor(NicheRangeOverlapDot$congeneric)
+
+# --- Prior: one multiple-membership random effect (G) + residual (R) ---
+# Parameter-expanded prior on the random effect helps mixing.
+prior <- list(
+  R = list(V = 1, nu = 0.002),
+  G = list(G1 = list(V = 1, nu = 1, alpha.mu = 0, alpha.V = 1000))
+)
+
+# --- Model: lm fixed structure + species identity as an MM random effect ---
+set.seed(1)
+m1_mm <- MCMCglmm(
+  fixed  = range_overlap_percent ~ niche_overlap_percent * congeneric,
+  random = ~ mm(species1 + species2),   # each pair contributes to BOTH species
+  family = "gaussian",
+  data   = NicheRangeOverlapDot,
+  prior  = prior,
+  nitt   = 260000, burnin = 60000, thin = 200,   # -> 1000 posterior samples
+  verbose = FALSE
+)
+
+summary(m1_mm)
+
+# --- Convergence checks ---
+plot(m1_mm$Sol)            # trace + density for fixed effects; want fuzzy caterpillars
+effectiveSize(m1_mm$Sol)   # aim for several hundred+ per term
+autocorr.diag(m1_mm$Sol)   # autocorr should drop quickly past lag 0
 
 ################################################################################
 # 23) Figure 2 niche areas 
