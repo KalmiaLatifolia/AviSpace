@@ -2,7 +2,7 @@
 # full protocol for processing Sierra BioCube and Acoustics data
 # Laura Berman
 # created 30 April 2025
-# last updated 30 Sep 2025
+# last updated 07 July 2026
 
 # load packages ----------------------------------------------------------------
 
@@ -31,12 +31,40 @@ library(geosphere)
 library(scales)
 library(patchwork)
 
+# Table of contents ------------------------------------------------------------
+# 1) Processing ARU bioacoustic data  - 63
+# 2) remove burned areas - 179
+# 3) Get foliar traits - 243
+# 4) Get biocube variables - 493
+# 5) add USGS CONUS GAP 2011 landcover type - 558
+# 6) remove species with insufficient data -585
+# 7) which points are too close to each other? - 624
+# 8) make a nice map - 684
+# 9) check for colinearity - 737
+# 10) Niche Space PCA - 803
+# 11) PCA loadings (supp figures) - 823
+# 12) render landcover labels - 892
+# 13) test plot for errored species polygons - 975
+# 14) Species Niche Polygons - 1014
+# 15) plot 2 species niche overlap - 1112
+# 16) Calculate all pairwise overlaps - 1240
+# 17) Species niche Areas & Percent overlap - 1284
+# 18) calculate Range overlaps - 1309
+# 19) Range Overlap Maps - 1457
+# 20) Combine range overlaps and niche overlaps - 1562
+# 21) plot range vs niche overlap - 1596
+# 22) ANCOVA - 1689
+# 23) Figure 2 niche areas - 1701
+# 24) Figure 3 - 1717
+# 25) Species details supp table - 1819
+
+
 # working directory  -----------------------------------------------------------
 setwd("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/Draft 1")
 
 
 ################################################################################
-# starting with ARU bioacoustic data 
+# 1) Processing ARU bioacoustic data 
 ################################################################################
 
 # load ARU locations -----------------------------------------------------------
@@ -152,7 +180,7 @@ siteDetections[is.na(siteDetections)] <- 0
 
 
 ################################################################################
-# remove burned areas
+# 2) remove burned areas
 ################################################################################
 
 
@@ -216,7 +244,7 @@ write_csv(siteDetections, "siteDetections_20250501.csv")
 
 
 ################################################################################
-# Get foliar traits
+# 3) Get foliar traits
 ################################################################################
 
 
@@ -466,7 +494,7 @@ write_csv(x, "siteDetections_foliarTraits_20250502.csv")
 
 
 ################################################################################
-# Get biocube variables
+# 4) Get biocube variables
 ################################################################################
 
 # update buffer -----------------------------------------------------------------
@@ -531,7 +559,7 @@ write_csv(siteDetections_foliarTraits_BioCube, "siteDetections_foliarTraits_BioC
 
 
 ################################################################################
-# add USGS CONUS GAP 2011 landcover type
+# 5) add USGS CONUS GAP 2011 landcover type
 ################################################################################
 
 # load data
@@ -558,7 +586,7 @@ siteDetections_foliarTraits_BioCube$landcover_ID <- NULL
 
 
 ################################################################################
-#  remove species with insufficient data
+#  6) remove species with insufficient data
 ################################################################################
 
 # at how many sites is each species detected? ----------------------------------
@@ -597,7 +625,7 @@ write_csv(siteDetections_foliarTraits_BioCube, "siteDetections_foliarTraits_BioC
 # 580 obs, 207 var
 
 ################################################################################
-#  which points are too close to each other?
+#  7) which points are too close to each other?
 ################################################################################
 
 # Compute full distance matrix
@@ -657,7 +685,7 @@ avg_distances <- sites_sf %>%
 mean(avg_distances$avg_dist, na.rm=TRUE) #1206 meters
 
 ################################################################################
-#  make a nice map
+#  8) make a nice map
 ################################################################################
 
 # update sites
@@ -710,7 +738,7 @@ ggplot() +
 ggsave("point_map.pdf", height=7, width=5)
 
 ################################################################################
-# check for colinearity
+# 9) check for colinearity
 ################################################################################
 
 # 90% cutoff
@@ -773,10 +801,10 @@ siteDetections_foliarTraits_BioCube$Starch <- NULL
 # save updated version
 write_rds(siteDetections_foliarTraits_BioCube, "siteDetections_foliarTraits_BioCube_20250522.rds")
 write_csv(siteDetections_foliarTraits_BioCube, "siteDetections_foliarTraits_BioCube_20250522.csv")
-
+siteDetections_foliarTraits_BioCube <- readRDS("siteDetections_foliarTraits_BioCube_20250522.rds")
 
 ################################################################################
-# Niche Space PCA
+# 10) Niche Space PCA
 ################################################################################
 
 # convert to count data --------------------------------------------------------
@@ -796,7 +824,7 @@ roundedPCA <- cbind(roundedCounts, traitsPCA$x)
 
 
 ################################################################################
-# PCA loadings (supp figures)
+# 11) PCA loadings (supp figures)
 ################################################################################
 
 
@@ -865,7 +893,7 @@ fviz_contrib(traitsPCA, choice="var", axes = 2, sort.val ="asc") +
   ylab("Habitat")
 
 ################################################################################
-# render landcover labels
+# 12) render landcover labels
 ################################################################################
 
 # the plot
@@ -948,12 +976,12 @@ landcover_centroids$Groups[landcover_centroids$Groups == "California Montane Jef
 landcover_centroids$Groups[landcover_centroids$Groups == "Sierra Nevada Subalpine Lodgepole Pine Forest and Woodland"] <- "Subalpine Lodgepole Pine Forest and Woodland"
 
 ################################################################################
-# test plot for errored species polygons
+# 13) test plot for errored species polygons
 ################################################################################
 
 # some species weren't plotting correctly because not enough points
 # Solution #1) 1 = 1 detection per 10 days (x10 increase) (NOPE)
-# Solution #2) add jitter to all points (non-identical coordinates)
+# Solution #2) add jitter to all points (non-identical coordinates) (this worked)
 
 species <- names(roundedPCA)[5:96]
 species
@@ -987,7 +1015,7 @@ ggplot(roundedPCA, aes(x=PC1, y=PC2, color=get(species1))) + geom_point() + scal
 ggplot(uncounted_data1, aes(x=PC1, y=PC2)) + geom_point(alpha=0.05)
 
 ################################################################################
-# Species Niche Polygons
+# 14) Species Niche Polygons
 ################################################################################
 
 
@@ -1071,6 +1099,7 @@ calculate_polygons <- function(species1) {
 
 
 # Make a dataframe with all species polygons -----------------------------------
+# (KDE fails for Downy.Woodpecker and Lawrence.s.Goldfinch)
 
 speciesPolygons <- map_dfr(species, ~ calculate_polygons(.x), .id = "species1")
 speciesPolygons$species1 <- NULL
@@ -1085,7 +1114,7 @@ write_rds(speciesPolygons, "speciesPolygons_jittered_detPerDay_20250624.rds")
 
 
 ################################################################################
-# plot 2 species niche overlap
+# 15) plot 2 species niche overlap
 ################################################################################
 
 # pick my favorite eigenvectors ------------------------------------------------
@@ -1165,7 +1194,7 @@ fviz_pca_ind(traitsPCA,
   labs(title = "")
 
 
-# make a not warped version ----------------------------------------------------
+# make a not warped version (aspect ratio should match PC%)---------------------
 
 species <- colnames(roundedCounts)[5:96]
 sort(species)
@@ -1213,7 +1242,7 @@ fviz_pca_ind(traitsPCA,
 ggsave("OverlapPoly_YRWarb_RBNut.pdf", height=5, width=7)
 
 ################################################################################
-# Calculate all pairwise overlaps
+# 16) Calculate all pairwise overlaps
 ################################################################################
 
 # define species combinations --------------------------------------------------
@@ -1257,7 +1286,7 @@ write.csv(pairwise_combinations, "speciesNicheOverlapAreas_jittered_detPerWeek_2
 
 
 ################################################################################
-# Species niche Areas & Percent overlap
+# 17) Species niche Areas & Percent overlap
 ################################################################################
 
 # species areas
@@ -1282,7 +1311,7 @@ write_rds(percentOverlap, "percentOverlap_20250624.rds")
 
 
 ################################################################################
-# calculate Range overlaps
+# 18) calculate Range overlaps
 ################################################################################
 
 
@@ -1407,10 +1436,11 @@ setwd("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSing
 
 # write csv
 
-setwd("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/Shiny/Avispace4.0")
+setwd("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/AviSpace_GitHub/AviSpace4.0")
 
 write.csv(rangeOverlaps, "rangeOverlaps_20250624.csv")
 write_rds(rangeOverlaps, "rangeOverlaps_20250624.rds")
+
 
 # make dot version -------------------------------------------------------------
 dotVclean_nameMatches <-  read.csv("dotVclean_nameMatches.csv")
@@ -1427,10 +1457,10 @@ names(rangeOverlapsDot)[names(rangeOverlapsDot) == "dotName"] <- "species2"
 
 write.csv(rangeOverlapsDot, "rangeOverlaps_dotNames_20250624.csv")
 write_rds(rangeOverlapsDot, "rangeOverlaps_dotNames_20250624.rds")
-
+rangeOverlaps <- readRDS("rangeOverlaps_dotNames_20250623.rds")
 
 ################################################################################
-# Range Overlap Maps
+# 19) Range Overlap Maps
 ################################################################################
 
 
@@ -1535,7 +1565,7 @@ ggplot() +
 ggsave("RangeOverlap_OakTit_RNSap.pdf", height=7, width=7)
 
 ################################################################################
-# Combine range overlaps and niche overlaps
+# 20) Combine range overlaps and niche overlaps
 ################################################################################
 
 # ensure column names are informative ------------------------------------------
@@ -1569,7 +1599,7 @@ merge2 <- merge(NicheOverlap, rangeOverlaps, by.x = c("species1", "species2"), b
 NicheRangeOverlap <- rbind(merge1, merge2)
 
 ################################################################################
-# plot range vs niche overlap
+# 21) plot range vs niche overlap
 ################################################################################
 
 # mark congeneric pairs --------------------------------------------------------
@@ -1618,20 +1648,19 @@ names(NicheRangeOverlapDot)[names(NicheRangeOverlapDot) == "dotName"] <- "specie
 
 write.csv(NicheRangeOverlapDot, "NicheRangeOverlap_dotNames_20250624.csv")
 write_rds(NicheRangeOverlapDot, "NicheRangeOverlap_dotNames_20250624.rds")
+NicheRangeOverlapDot <- readRDS("NicheRangeOverlap_dotNames_20250624.rds")
 
 # plot it ----------------------------------------------------------------------
 
-
-
 # light
-ggplot(NicheRangeOverlap, aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
+ggplot(NicheRangeOverlapDot, aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
   geom_smooth(aes(fill = congeneric), method = "lm", alpha = 0.2) +  
   theme_minimal() +
   scale_color_manual(values = c("purple", "darkgreen")) +
   scale_fill_manual(values = c("purple", "darkgreen")) +  
   geom_point(data=subset(NicheRangeOverlap, NicheRangeOverlap$sisterSpecies==TRUE), color="black") +
   theme(legend.title = element_blank()) +
-  stat_poly_eq(aes(label = after_stat(eq.label)), formula = y ~ x, parse = TRUE) +
+  stat_poly_eq(aes(label = after_stat(eq.label)), formula = y ~ x, parse = TRUE) + # ggpmisc
   scale_x_continuous(labels = percent_format(accuracy = 1)) +
   scale_y_continuous(labels = percent_format(accuracy = 1)) +
   xlab("Niche Overlap (%)") +
@@ -1639,9 +1668,9 @@ ggplot(NicheRangeOverlap, aes(x = niche_overlap_percent, y = range_overlap_perce
 ggsave("NicheRangeOverlap_light_20250624.pdf", height=5, width=7)
 
 # dark
-ggplot(NicheRangeOverlap, aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
+ggplot(NicheRangeOverlapDot, aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
   geom_smooth(aes(fill = congeneric), method = "lm", alpha = 0.3) +  
-  dark_theme_minimal() +
+  dark_theme_minimal() + # ggdark package was removed from CRAN in 2025. future versions might not plot smoothly
   scale_color_manual(values = c("purple", "#A0C878")) +
   scale_fill_manual(values = c("purple", "#A0C878")) +  
   geom_point(data=subset(NicheRangeOverlap, NicheRangeOverlap$sisterSpecies==TRUE), color="white") +
@@ -1655,14 +1684,46 @@ ggsave("NicheRangeOverlap_dark_20250515.pdf", height=5, width=7)
 
 
 
-ggplot(NicheRangeOverlap, aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
-  geom_point() +
-  facet_grid(~congeneric)
-ggsave("NicheRangeOverlap_points_20250624.pdf", height=5, width=7)
+# plot without potentially cross-identified sister species ---------------------
 
+# remove sapsucker sister species
+NicheRangeOverlapDot <- NicheRangeOverlapDot[!((NicheRangeOverlapDot$species1 == "Red.breasted.Sapsucker" & NicheRangeOverlapDot$species2 == "Red.naped.Sapsucker") | 
+                                                 (NicheRangeOverlapDot$species1 == "Red.naped.Sapsucker" & NicheRangeOverlapDot$species2 == "Red.breasted.Sapsucker")), ]
+# remove vireo sister species
+NicheRangeOverlapDot <- NicheRangeOverlapDot[!((NicheRangeOverlapDot$species1 == "Cassin.s.Vireo" & NicheRangeOverlapDot$species2 == "Plumbeous.Vireo") | 
+                                                 (NicheRangeOverlapDot$species1 == "Plumbeous.Vireo" & NicheRangeOverlapDot$species2 == "Cassin.s.Vireo")), ]
+# plot the updated data
+ggplot(NicheRangeOverlapDot, aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
+  geom_smooth(aes(fill = congeneric), method = "lm", alpha = 0.2) +  
+  theme_minimal() +
+  scale_color_manual(values = c("purple", "darkgreen")) +
+  scale_fill_manual(values = c("purple", "darkgreen")) +  
+  geom_point(data=subset(NicheRangeOverlapDot, NicheRangeOverlapDot$sisterSpecies==TRUE), color="black") +
+  theme(legend.title = element_blank()) +
+  stat_poly_eq(aes(label = after_stat(eq.label)), formula = y ~ x, parse = TRUE) + # ggpmisc
+  scale_x_continuous(labels = percent_format(accuracy = 1)) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  xlab("Niche Overlap (%)") +
+  ylab("Range Overlap (%)")
+ggsave("NicheRangeOverlap_light_20260706.pdf", height=5, width=7)
+
+# make supp figure with points
+ggplot(NicheRangeOverlapDot, aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
+  geom_point(alpha=0.2) +
+  scale_color_manual(values = c("purple", "darkgreen")) +
+  scale_fill_manual(values = c("purple", "darkgreen")) +
+  facet_grid(~congeneric) +
+  scale_x_continuous(labels = percent_format(accuracy = 1)) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  stat_poly_eq(aes(label = after_stat(eq.label)), formula = y ~ x, parse = TRUE) +
+  xlab("Niche Overlap (%)") +
+  ylab("Range Overlap (%)") +
+  geom_smooth(aes(fill = congeneric), method = "lm", alpha = 0.2) +
+  theme_minimal()
+ggsave("NicheRangeOverlap_points_20260706.pdf", height=5, width=7)
 
 ################################################################################
-# ANCOVA
+# 22) ANCOVA
 ################################################################################
 
 m1 <- lm(range_overlap_percent ~ niche_overlap_percent * congeneric, data = NicheRangeOverlap)
@@ -1670,7 +1731,7 @@ summary(m1)
 anova(m1)
 
 ################################################################################
-# Figure 2 niche areas 
+# 23) Figure 2 niche areas 
 ################################################################################
 
 ggplot(NicheAreas, aes(x = reorder(species, area), y = area)) +
@@ -1686,7 +1747,7 @@ ggplot(NicheAreas, aes(x = reorder(species, area), y = area)) +
 ggsave("NicheAreas_20250709.pdf", height=12, width=7)
 
 ################################################################################
-# Figure 3
+# 24) Figure 3
 ################################################################################
 
 # Heirarchical Matrix
@@ -1788,7 +1849,7 @@ combined_plot
 
 
 ################################################################################
-# Species details supp table
+# 25) Species details supp table
 ################################################################################
 
 # niche area
