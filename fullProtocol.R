@@ -54,7 +54,7 @@ library(MCMCglmm)
 # 19) Range Overlap Maps - 1457
 # 20) Combine range overlaps and niche overlaps - 1562
 # 21) plot range vs niche overlap - 1596
-# 22) ANCOVA - 1689
+# 22) Mixed effects model - 1689
 # 23) Figure 2 niche areas - 1701
 # 24) Figure 3 - 1717
 # 25) Species details supp table - 1819
@@ -1651,41 +1651,7 @@ write.csv(NicheRangeOverlapDot, "NicheRangeOverlap_dotNames_20250624.csv")
 write_rds(NicheRangeOverlapDot, "NicheRangeOverlap_dotNames_20250624.rds")
 NicheRangeOverlapDot <- readRDS("NicheRangeOverlap_dotNames_20250624.rds")
 
-# plot it ----------------------------------------------------------------------
-
-# light
-ggplot(NicheRangeOverlapDot, aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
-  geom_smooth(aes(fill = congeneric), method = "lm", alpha = 0.2) +  
-  theme_minimal() +
-  scale_color_manual(values = c("purple", "darkgreen")) +
-  scale_fill_manual(values = c("purple", "darkgreen")) +  
-  geom_point(data=subset(NicheRangeOverlap, NicheRangeOverlap$sisterSpecies==TRUE), color="black") +
-  theme(legend.title = element_blank()) +
-  stat_poly_eq(aes(label = after_stat(eq.label)), formula = y ~ x, parse = TRUE) + # ggpmisc
-  scale_x_continuous(labels = percent_format(accuracy = 1)) +
-  scale_y_continuous(labels = percent_format(accuracy = 1)) +
-  xlab("Niche Overlap (%)") +
-  ylab("Range Overlap (%)")
-ggsave("NicheRangeOverlap_light_20250624.pdf", height=5, width=7)
-
-# dark
-ggplot(NicheRangeOverlapDot, aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
-  geom_smooth(aes(fill = congeneric), method = "lm", alpha = 0.3) +  
-  dark_theme_minimal() + # ggdark package was removed from CRAN in 2025. future versions might not plot smoothly
-  scale_color_manual(values = c("purple", "#A0C878")) +
-  scale_fill_manual(values = c("purple", "#A0C878")) +  
-  geom_point(data=subset(NicheRangeOverlap, NicheRangeOverlap$sisterSpecies==TRUE), color="white") +
-  theme(legend.title = element_blank()) +
-  stat_poly_eq(aes(label = after_stat(eq.label)), formula = y ~ x, parse = TRUE) +
-  scale_x_continuous(labels = percent_format(accuracy = 1)) +
-  scale_y_continuous(labels = percent_format(accuracy = 1)) +
-  xlab("Niche Overlap (%)") +
-  ylab("Range Overlap (%)")
-ggsave("NicheRangeOverlap_dark_20250515.pdf", height=5, width=7)
-
-
-
-# plot without potentially cross-identified sister species ---------------------
+# remove potentially cross-identified sister species ---------------------------
 
 # remove sapsucker sister species
 NicheRangeOverlapDot <- NicheRangeOverlapDot[!((NicheRangeOverlapDot$species1 == "Red.breasted.Sapsucker" & NicheRangeOverlapDot$species2 == "Red.naped.Sapsucker") | 
@@ -1725,7 +1691,7 @@ ggsave("NicheRangeOverlap_points_20260706.pdf", height=5, width=7)
 
 
 ################################################################################
-# 22) ANCOVA
+# 22) Mixed effects model
 ################################################################################
 
 # ANCOVA test - are the two slopes significantly different? --------------------
@@ -1770,6 +1736,74 @@ summary(m1_mm)
 plot(m1_mm$Sol)            # trace + density for fixed effects; want fuzzy caterpillars
 effectiveSize(m1_mm$Sol)   # aim for several hundred+ per term
 autocorr.diag(m1_mm$Sol)   # autocorr should drop quickly past lag 0
+
+
+# ---- Build fitted lines from the posterior (fixed effects = population-level) ----
+sol  <- m1_mm$Sol
+lev  <- levels(NicheRangeOverlapDot$congeneric)          # lev[1] = reference (heterogeneric)
+xseq <- seq(min(NicheRangeOverlapDot$niche_overlap_percent),
+            max(NicheRangeOverlapDot$niche_overlap_percent), length.out = 100)
+dslope <- sol[, "niche_overlap_percent:congenericSame Genus"]
+pmc    <- summary(m1_mm)$solutions["niche_overlap_percent:congenericSame Genus", "pMCMC"]
+
+eff_label <- sprintf("Difference in slopes = %.2f  [%.2f, %.2f],  pMCMC = %.3f",
+                     mean(dslope), quantile(dslope, .025), quantile(dslope, .975), pmc)
+
+
+# per-group posterior draws of intercept (b0) and slope (b1)
+coefs <- function(g) {
+  if (g == lev[1]) {
+    list(b0 = sol[, "(Intercept)"],
+         b1 = sol[, "niche_overlap_percent"])
+  } else {
+    list(b0 = sol[, "(Intercept)"] + sol[, paste0("congeneric", g)],
+         b1 = sol[, "niche_overlap_percent"] +
+           sol[, paste0("niche_overlap_percent:congeneric", g)])
+  }
+}
+
+pred_df <- do.call(rbind, lapply(lev, function(g) {
+  cf    <- coefs(g)
+  preds <- sapply(xseq, function(xi) cf$b0 + cf$b1 * xi)   # draws x xgrid
+  fit   <- colMeans(preds)
+  se    <- apply(preds, 2, sd)
+  data.frame(niche_overlap_percent = xseq, congeneric = g,
+             fit = fit, lower = fit - 1.96 * se, upper = fit + 1.96 * se)
+}))
+pred_df$congeneric <- factor(pred_df$congeneric, levels = lev)
+
+# slope labels (posterior mean + 95% credible interval), replacing the lm equation
+lab_df <- do.call(rbind, lapply(lev, function(g) {
+  b1 <- coefs(g)$b1
+  data.frame(congeneric = factor(g, levels = lev),
+             label = sprintf("slope = %.2f [%.2f, %.2f]",
+                             mean(b1), quantile(b1, 0.025), quantile(b1, 0.975)))
+}))
+lab_df$x <- 0  # left side
+lab_df$y <- c(0.43, 0.40)[seq_along(lev)]   # lower, near 0.5, stacked
+eff_df <- data.frame(x = min(xseq), y = 0.37, label = eff_label)
+
+# ---- Figure ----
+ggplot(NicheRangeOverlapDot,
+       aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
+  geom_ribbon(data = pred_df,
+              aes(y = fit, ymin = lower, ymax = upper, fill = congeneric),
+              alpha = 0.2, color = NA) +
+  geom_line(data = pred_df, aes(y = fit), linewidth = 1) +
+  geom_point(data = subset(NicheRangeOverlapDot, sisterSpecies == TRUE), color = "black") +
+  geom_text(data = lab_df, aes(x = x, y = y, label = label),
+            hjust = 0, show.legend = FALSE) +
+  geom_text(data = eff_df, aes(x = x, y = y, label = label),
+            hjust = 0, color = "black", inherit.aes = FALSE) +
+  scale_color_manual(values = c("purple", "darkgreen")) +
+  scale_fill_manual(values = c("purple", "darkgreen")) +
+  scale_x_continuous(labels = percent_format(accuracy = 1)) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  theme_minimal() +
+  theme(legend.title = element_blank()) +
+  xlab("Niche Overlap (%)") +
+  ylab("Range Overlap (%)")
+ggsave("NicheRangeOverlap_points_20260706.pdf", height=5, width=7)
 
 ################################################################################
 # 23) Figure 2 niche areas 
