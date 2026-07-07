@@ -54,7 +54,8 @@ library(MCMCglmm)
 # 19) Range Overlap Maps - 1457
 # 20) Combine range overlaps and niche overlaps - 1562
 # 21) plot range vs niche overlap - 1596
-# 22) Mixed effects model - 1689
+# 22) Mixed effects model - 1695
+# 23) permutation test - 
 # 23) Figure 2 niche areas - 1701
 # 24) Figure 3 - 1717
 # 25) Species details supp table - 1819
@@ -1694,13 +1695,6 @@ ggsave("NicheRangeOverlap_points_20260706.pdf", height=5, width=7)
 # 22) Mixed effects model
 ################################################################################
 
-# ANCOVA test - are the two slopes significantly different? --------------------
-# (deprecated. ANCOVA no longer used in final analysis)
-m1 <- lm(range_overlap_percent ~ niche_overlap_percent * congeneric, data = NicheRangeOverlapDot)
-summary(m1)
-anova(m1)
-
-
 # Mixed effects model - accounts for species non-independence (the same species appear in multiple pairs)
 
 # --- Prep ---
@@ -1772,7 +1766,7 @@ pred_df <- do.call(rbind, lapply(lev, function(g) {
 }))
 pred_df$congeneric <- factor(pred_df$congeneric, levels = lev)
 
-# slope labels (posterior mean + 95% credible interval), replacing the lm equation
+# slope labels (posterior mean + 95% credible interval)
 lab_df <- do.call(rbind, lapply(lev, function(g) {
   b1 <- coefs(g)$b1
   data.frame(congeneric = factor(g, levels = lev),
@@ -1780,17 +1774,18 @@ lab_df <- do.call(rbind, lapply(lev, function(g) {
                              mean(b1), quantile(b1, 0.025), quantile(b1, 0.975)))
 }))
 lab_df$x <- 0  # left side
-lab_df$y <- c(0.43, 0.40)[seq_along(lev)]   # lower, near 0.5, stacked
+lab_df$y <- c(0.43, 0.40)[seq_along(lev)]   # stacked
 eff_df <- data.frame(x = min(xseq), y = 0.37, label = eff_label)
 
-# ---- Figure ----
+# ---- Plot it ----
+# Figure 8
 ggplot(NicheRangeOverlapDot,
        aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
   geom_ribbon(data = pred_df,
               aes(y = fit, ymin = lower, ymax = upper, fill = congeneric),
               alpha = 0.2, color = NA) +
   geom_line(data = pred_df, aes(y = fit), linewidth = 1) +
-  geom_point(data = subset(NicheRangeOverlapDot, sisterSpecies == TRUE), color = "black") +
+  #geom_point(data = subset(NicheRangeOverlapDot, sisterSpecies == TRUE), color = "black") +
   geom_text(data = lab_df, aes(x = x, y = y, label = label),
             hjust = 0, show.legend = FALSE) +
   geom_text(data = eff_df, aes(x = x, y = y, label = label),
@@ -1804,6 +1799,107 @@ ggplot(NicheRangeOverlapDot,
   xlab("Niche Overlap (%)") +
   ylab("Range Overlap (%)")
 ggsave("NicheRangeOverlap_points_20260706.pdf", height=5, width=7)
+
+# supp figure 
+ggplot(NicheRangeOverlapDot,
+       aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
+  geom_ribbon(data = pred_df,
+              aes(y = fit, ymin = lower, ymax = upper, fill = congeneric),
+              alpha = 0.2, color = NA) +
+  geom_point(alpha = 0.2) +
+  geom_line(data = pred_df, aes(y = fit), linewidth = 1) +
+  geom_text(data = lab_df, aes(x = x, y = y+0.3, label = label),
+            hjust = 0, show.legend = FALSE) +
+  scale_color_manual(values = c("purple", "darkgreen")) +
+  scale_fill_manual(values = c("purple", "darkgreen")) +
+  facet_grid(~ congeneric) +
+  scale_x_continuous(labels = percent_format(accuracy = 1)) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  xlab("Niche Overlap (%)") +
+  ylab("Range Overlap (%)")
+ggsave("NicheRangeOverlap_points_20260706.pdf", height=5, width=7)
+
+
+# Slightly different mixed effects model
+# Doesn't assume same intercept for species in congeneric and heterogeneric contexts
+
+
+# --- Congeneric subset ---
+cong_dat <- droplevels(subset(NicheRangeOverlapDot, congeneric == "Same Genus"))
+
+# 1. How often does each species appear within the congeneric subset?
+sp_counts <- table(c(as.character(cong_dat$species1), as.character(cong_dat$species2)))
+table(sp_counts)      # mostly 1s => a species random effect is barely identifiable here
+
+# 2. Subset-only slope, no random effect (this should reproduce the ~ -0.257)
+m_lm <- lm(range_overlap_percent ~ niche_overlap_percent, data = cong_dat)
+coef(m_lm)["niche_overlap_percent"]
+
+# 3. Subset multiple-membership model (for completeness; see caveat above)
+lev_sp <- sort(unique(c(as.character(cong_dat$species1), as.character(cong_dat$species2))))
+cong_dat$species1 <- factor(cong_dat$species1, levels = lev_sp)
+cong_dat$species2 <- factor(cong_dat$species2, levels = lev_sp)
+
+prior <- list(R = list(V = 1, nu = 0.002),
+              G = list(G1 = list(V = 1, nu = 1, alpha.mu = 0, alpha.V = 1000)))
+
+set.seed(1)
+m_cong <- MCMCglmm(range_overlap_percent ~ niche_overlap_percent,
+                   random = ~ mm(species1 + species2),
+                   family = "gaussian", data = cong_dat, prior = prior,
+                   nitt = 260000, burnin = 60000, thin = 200, verbose = FALSE)
+summary(m_cong)
+
+# 4. Compare the three congeneric-slope estimates
+c(subset_lm         = unname(coef(m_lm)["niche_overlap_percent"]),
+  subset_mm         = mean(m_cong$Sol[, "niche_overlap_percent"]),
+  joint_model_cong  = mean(sol[, "niche_overlap_percent"] +
+                             sol[, "niche_overlap_percent:congenericSame Genus"]))
+
+################################################################################
+# 23) permutation test
+################################################################################
+
+# ---- 1. Species -> genus map, straight from the genus columns ----
+sp_gen <- unique(rbind(
+  data.frame(species = as.character(NicheRangeOverlapDot$species1),
+             genus   = as.character(NicheRangeOverlapDot$genus_species1)),
+  data.frame(species = as.character(NicheRangeOverlapDot$species2),
+             genus   = as.character(NicheRangeOverlapDot$genus_species2))
+))
+genus_of <- setNames(sp_gen$genus, sp_gen$species)
+
+# ---- 2. Statistic: interaction (slope difference) from a given species->genus map ----
+interaction_coef <- function(gmap) {
+  cong_status <- gmap[as.character(NicheRangeOverlapDot$species1)] ==
+    gmap[as.character(NicheRangeOverlapDot$species2)]
+  fit <- lm(range_overlap_percent ~ niche_overlap_percent * cong_status,
+            data = NicheRangeOverlapDot)
+  unname(coef(fit)["niche_overlap_percent:cong_statusTRUE"])
+}
+
+obs <- interaction_coef(genus_of)                     # observed slope difference
+
+# ---- 3. Null: shuffle genus labels across species (preserves genus-size distribution) ----
+set.seed(1)
+nperm   <- 5000
+species <- names(genus_of)
+null <- replicate(nperm, {
+  permuted <- setNames(sample(unname(genus_of)), species)
+  interaction_coef(permuted)
+})
+
+# ---- 4. Two-sided permutation p-value ----
+p_perm <- (sum(abs(null) >= abs(obs)) + 1) / (nperm + 1)
+c(observed_slope_diff = obs, p_perm = p_perm)
+
+# optional: see where the observed value falls
+hist(null, breaks = 40, main = "Permutation null: slope difference",
+     xlab = "interaction coefficient"); abline(v = obs, col = "red", lwd = 2)
+
+
 
 ################################################################################
 # 23) Figure 2 niche areas 
