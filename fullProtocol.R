@@ -1297,6 +1297,7 @@ speciesAreas <- data.frame(species = speciesPolygons$species,
 
 # save it 
 write_rds(speciesAreas, "speciesNicheAreas_20250624.rds")
+#speciesAreas <- readRDS("speciesNicheAreas_20250624.rds")
 
 # add areas to pairwise overlap
 percentOverlap <- merge(pairwise_combinations, speciesAreas, by.x = "species1", by.y = "species")
@@ -1660,7 +1661,7 @@ NicheRangeOverlapDot <- NicheRangeOverlapDot[!((NicheRangeOverlapDot$species1 ==
 # remove vireo sister species
 NicheRangeOverlapDot <- NicheRangeOverlapDot[!((NicheRangeOverlapDot$species1 == "Cassin.s.Vireo" & NicheRangeOverlapDot$species2 == "Plumbeous.Vireo") | 
                                                  (NicheRangeOverlapDot$species1 == "Plumbeous.Vireo" & NicheRangeOverlapDot$species2 == "Cassin.s.Vireo")), ]
-# plot the updated data
+# plot the updated data (linear model)
 ggplot(NicheRangeOverlapDot, aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
   geom_smooth(aes(fill = congeneric), method = "lm", alpha = 0.2) +  
   theme_minimal() +
@@ -1675,7 +1676,7 @@ ggplot(NicheRangeOverlapDot, aes(x = niche_overlap_percent, y = range_overlap_pe
   ylab("Range Overlap (%)")
 ggsave("NicheRangeOverlap_light_20260706.pdf", height=5, width=7)
 
-# make supp figure with points
+# make supp figure with points (linear model)
 ggplot(NicheRangeOverlapDot, aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
   geom_point(alpha=0.2) +
   scale_color_manual(values = c("purple", "darkgreen")) +
@@ -1822,41 +1823,6 @@ ggplot(NicheRangeOverlapDot,
 ggsave("NicheRangeOverlap_points_20260706.pdf", height=5, width=7)
 
 
-# Slightly different mixed effects model
-# Doesn't assume same intercept for species in congeneric and heterogeneric contexts
-
-
-# --- Congeneric subset ---
-cong_dat <- droplevels(subset(NicheRangeOverlapDot, congeneric == "Same Genus"))
-
-# 1. How often does each species appear within the congeneric subset?
-sp_counts <- table(c(as.character(cong_dat$species1), as.character(cong_dat$species2)))
-table(sp_counts)      # mostly 1s => a species random effect is barely identifiable here
-
-# 2. Subset-only slope, no random effect (this should reproduce the ~ -0.257)
-m_lm <- lm(range_overlap_percent ~ niche_overlap_percent, data = cong_dat)
-coef(m_lm)["niche_overlap_percent"]
-
-# 3. Subset multiple-membership model (for completeness; see caveat above)
-lev_sp <- sort(unique(c(as.character(cong_dat$species1), as.character(cong_dat$species2))))
-cong_dat$species1 <- factor(cong_dat$species1, levels = lev_sp)
-cong_dat$species2 <- factor(cong_dat$species2, levels = lev_sp)
-
-prior <- list(R = list(V = 1, nu = 0.002),
-              G = list(G1 = list(V = 1, nu = 1, alpha.mu = 0, alpha.V = 1000)))
-
-set.seed(1)
-m_cong <- MCMCglmm(range_overlap_percent ~ niche_overlap_percent,
-                   random = ~ mm(species1 + species2),
-                   family = "gaussian", data = cong_dat, prior = prior,
-                   nitt = 260000, burnin = 60000, thin = 200, verbose = FALSE)
-summary(m_cong)
-
-# 4. Compare the three congeneric-slope estimates
-c(subset_lm         = unname(coef(m_lm)["niche_overlap_percent"]),
-  subset_mm         = mean(m_cong$Sol[, "niche_overlap_percent"]),
-  joint_model_cong  = mean(sol[, "niche_overlap_percent"] +
-                             sol[, "niche_overlap_percent:congenericSame Genus"]))
 
 ################################################################################
 # 23) permutation test
@@ -1902,7 +1868,7 @@ hist(null, breaks = 40, main = "Permutation null: slope difference",
 
 
 ################################################################################
-# 23) Figure 2 niche areas 
+# 23) Figure 4 niche areas 
 ################################################################################
 
 ggplot(NicheAreas, aes(x = reorder(species, area), y = area)) +
@@ -1918,10 +1884,14 @@ ggplot(NicheAreas, aes(x = reorder(species, area), y = area)) +
 ggsave("NicheAreas_20250709.pdf", height=12, width=7)
 
 ################################################################################
-# 24) Figure 3
+# 24) Figure 5 - matrix
 ################################################################################
 
 # Heirarchical Matrix
+
+# bring back sister species ----------------------------------------------------
+NicheRangeOverlapDot <- readRDS("NicheRangeOverlap_dotNames_20250624.rds")
+speciesAreas <- readRDS("speciesNicheAreas_20250624.rds")
 
 # fill out the gaps in overlaps ------------------------------------------------
 selfOverlap <- data_frame(species1 = speciesAreas$species,
@@ -1946,7 +1916,7 @@ alloverlaps <- alloverlaps %>%
 overlap_matrix <- acast(alloverlaps, species1 ~ species2, value.var = "niche_overlap_percent", fill = 0)
 
 # heirarchical clustering
-hc <- hclust(as.dist(1 - overlap_matrix))
+hc <- hclust(as.dist(1 - overlap_matrix), method = "complete")
 species_order <- hc$labels[hc$order]
 
 # Reorder species1 and species2 based on desired order
@@ -2016,8 +1986,41 @@ combined_plot <- plot_grid(
 )
 
 combined_plot
+ggsave("Figure5_matrix.PDF", height=15, width=15)
 
 
+# a reviewer asked for a simplified version with fewer species -----------------
+
+# subset to fewer species ------------------------------------------------------
+spSubset <- c("Pacific.Wren", "Brown.Creeper", "Red.breasted.Nuthatch", "Red.breasted.Sapsucker", "Red.naped.Sapsucker", "White.headed.Woodpecker",
+              "Townsed.s.Solitaire", "Yellow.rumped.Warbler", "Hammond.s.Flycatcher", "Hermit.Warbler", "Hermit.Thrush", "Golden.crowned.Kinglet",
+              "Mountain.Chickadee", "Olive.sided.Flycatcher", "Cassin.s.Finch", "Red.Crossbill", "Green.Tailed.Towhee", "Dusky.Flycatcher",
+              "California.Quail", "California.Towhee", "Oak.Titmouse", "Blue.gray.Gnatcatcher", "Bewick.s.Wren", "Wrentit", "Nuttall.s.Woodpecker",
+              "Mourning.Dove", "California.Scrub.Jay", "Woodhouse.s.Scrub.Jay", "Black.Phoebe", "Acorn.Woodpecker", "Bushtit",
+              "Black.headed.Grosbeak", "Plumbeous.Vireo", "Purple.Finch", "Cassin.s.Vireo", "Nashville.Warbler", "Common.Raven", "American.Robin",
+              "Hairy.Woodpecker", "Northern.Flicker", "Steller.s.Jay", "Dark.eyed.Junco", "Western.Tanager", "Western.Wood.Pewee")
+
+NicheRangeOverlapDot <- NicheRangeOverlapDot[
+  NicheRangeOverlapDot$species1 %in% spSubset &
+    NicheRangeOverlapDot$species2 %in% spSubset,
+]
+
+speciesAreas <- speciesAreas[
+  speciesAreas$species %in% spSubset,
+]
+# then rerun earlier script 
+
+combined_plot <- plot_grid(
+  heatmap_plot,
+  bar_plot,
+  align = "h",
+  axis = "tblr",
+  rel_widths = c(9, 2)
+)
+
+combined_plot
+
+ggsave("Figure5_matrix_sup.PDF", height=8, width=9)
 
 ################################################################################
 # 25) Species details supp table
@@ -2026,6 +2029,7 @@ combined_plot
 # niche area
 # total # detections
 # total # sites
+# 06 July 2026 - Connor has added birdnet validation data to this table. do not overwrite.
 
 setwd("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/Draft 2")
 
