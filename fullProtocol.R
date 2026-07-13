@@ -31,6 +31,7 @@ library(geosphere)
 library(scales)
 library(patchwork)
 library(MCMCglmm)
+library(coda)
 
 # Table of contents ------------------------------------------------------------
 # 1) Processing ARU bioacoustic data  - 63
@@ -1714,37 +1715,48 @@ prior <- list(
 )
 
 # --- Model: lm fixed structure + species identity as an MM random effect ---
-set.seed(1)
-m1_mm <- MCMCglmm(
-  fixed  = range_overlap_percent ~ niche_overlap_percent * congeneric,
-  random = ~ mm(species1 + species2),   # each pair contributes to BOTH species
-  family = "gaussian",
-  data   = NicheRangeOverlapDot,
-  prior  = prior,
-  nitt   = 260000, burnin = 60000, thin = 200,   # -> 1000 posterior samples
-  verbose = FALSE
-)
+chains <- lapply(1:4, function(i) {
+  set.seed(i)
+  MCMCglmm(range_overlap_percent ~ niche_overlap_percent * congeneric,
+           random = ~ mm(species1 + species2),
+           family = "gaussian", data = NicheRangeOverlapDot, prior = prior,
+           nitt = 260000, burnin = 60000, thin = 200, verbose = FALSE)
+})
+gelman.diag(mcmc.list(lapply(chains, function(m) m$Sol)))  
 
-summary(m1_mm)
-write_rds(m1_mm, "MixedEffectsModel_20260713.RDS") 
+write_rds(chains, "MixedEffectsModel_4chains_20260713.RDS")
 
-# --- Convergence checks ---
-plot(m1_mm$Sol)            # trace + density for fixed effects; want fuzzy caterpillars
-effectiveSize(m1_mm$Sol)   # aim for several hundred+ per term
-autocorr.diag(m1_mm$Sol)   # autocorr should drop quickly past lag 0
+# --- Bundle the 4 chains ---
+sol_list <- mcmc.list(lapply(chains, function(m) m$Sol))   # fixed effects
+vcv_list <- mcmc.list(lapply(chains, function(m) m$VCV))   # variance components
+
+# --- Convergence checks across all 4 chains ---
+gelman.diag(sol_list)      # R-hat: point est + upper CI (want ~1.00)
+gelman.plot(sol_list)      # shows R-hat settling to 1 as iterations accrue
+plot(sol_list)             # trace + density; want all 4 chains overlapping in one band
+effectiveSize(sol_list)    # pooled ESS across chains (~4,000 if each was ~1,000)
+autocorr.diag(sol_list)    # autocorrelation should drop off fast
+
+# --- Pool chains for the reported posterior (inference) ---
+sol_all <- do.call(rbind, lapply(chains, function(m) m$Sol))
+vcv_all <- do.call(rbind, lapply(chains, function(m) m$VCV))
+apply(sol_all, 2, mean)                 # posterior means
+t(apply(sol_all, 2, quantile, c(.025, .975)))   # 95% credible intervals
 
 
-# ---- Build fitted lines from the posterior (fixed effects = population-level) ----
-sol  <- m1_mm$Sol
+# ---- Build fitted lines from the POOLED posterior (all 4 chains) ----
+sol  <- sol_all                                          # pooled draws, ~4,000 samples
 lev  <- levels(NicheRangeOverlapDot$congeneric)          # lev[1] = reference (heterogeneric)
 xseq <- seq(min(NicheRangeOverlapDot$niche_overlap_percent),
             max(NicheRangeOverlapDot$niche_overlap_percent), length.out = 100)
-dslope <- sol[, "niche_overlap_percent:congenericSame Genus"]
-pmc    <- summary(m1_mm)$solutions["niche_overlap_percent:congenericSame Genus", "pMCMC"]
 
+# pMCMC computed directly from the pooled draws (same definition MCMCglmm uses)
+p_from_draws <- function(x) 2 * max(0.5 / length(x), min(mean(x > 0), mean(x < 0)))
+
+dslope <- sol[, "niche_overlap_percent:congenericSame Genus"]
+pmc    <- p_from_draws(dslope)
 eff_label <- sprintf("Difference in slopes = %.2f  [%.2f, %.2f],  pMCMC = %.3f",
                      mean(dslope), quantile(dslope, .025), quantile(dslope, .975), pmc)
-
 
 # per-group posterior draws of intercept (b0) and slope (b1)
 coefs <- function(g) {
@@ -1800,7 +1812,7 @@ ggplot(NicheRangeOverlapDot,
   theme(legend.title = element_blank()) +
   xlab("Niche Overlap (%)") +
   ylab("Range Overlap (%)")
-ggsave("NicheRangeOverlap_points_20260706.pdf", height=5, width=7)
+ggsave("NicheRangeOverlap_points_20260713.pdf", height=5, width=7)
 
 # supp figure 
 ggplot(NicheRangeOverlapDot,
