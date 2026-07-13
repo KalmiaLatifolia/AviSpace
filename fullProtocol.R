@@ -1726,6 +1726,7 @@ m1_mm <- MCMCglmm(
 )
 
 summary(m1_mm)
+write_rds(m1_mm, "MixedEffectsModel_20260713.RDS") 
 
 # --- Convergence checks ---
 plot(m1_mm$Sol)            # trace + density for fixed effects; want fuzzy caterpillars
