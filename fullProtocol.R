@@ -2,7 +2,7 @@
 # full protocol for processing Sierra BioCube and Acoustics data
 # Laura Berman
 # created 30 April 2025
-# last updated 07 July 2026
+# last updated 04 November 2026
 
 # load packages ----------------------------------------------------------------
 
@@ -64,7 +64,12 @@ library(coda)
 
 
 # working directory  -----------------------------------------------------------
-setwd("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/Draft 1")
+# base_dir holds the large input data (detections, mosaics, range maps, etc.)
+# that are too big for the GitHub repository. Change this one line to run
+# the protocol on another machine.
+base_dir <- "/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics"
+
+setwd(file.path(base_dir, "Draft 1"))
 
 
 ################################################################################
@@ -73,14 +78,14 @@ setwd("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSing
 
 # load ARU locations -----------------------------------------------------------
 
-ARUlocations <- read.csv("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/laura_berman_diurnal_birds/data-clean/focal_aru_metadata.csv") # 2100 locations
+ARUlocations <- read.csv(file.path(base_dir, "laura_berman_diurnal_birds/data-clean/focal_aru_metadata.csv")) # 2100 locations
 ARUlocations <- ARUlocations %>% distinct(survey_year, cell_unit, box, .keep_all = TRUE) # 2073 unique locations
 
 # load detections --------------------------------------------------------------
 
-det21 <- read.csv("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/laura_berman_diurnal_birds/data-clean/2021_filtered_detections.csv") # 41,264,999 obs
-det22 <- read.csv("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/laura_berman_diurnal_birds/data-clean/2022_filtered_detections.csv") # 40,424,580 obs
-det23 <- read.csv("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/laura_berman_diurnal_birds/data-clean/2023_filtered_detections.csv") # 27,057,557 obs
+det21 <- read.csv(file.path(base_dir, "laura_berman_diurnal_birds/data-clean/2021_filtered_detections.csv")) # 41,264,999 obs
+det22 <- read.csv(file.path(base_dir, "laura_berman_diurnal_birds/data-clean/2022_filtered_detections.csv")) # 40,424,580 obs
+det23 <- read.csv(file.path(base_dir, "laura_berman_diurnal_birds/data-clean/2023_filtered_detections.csv")) # 27,057,557 obs
 
 det <- rbind(det21, det22) # 81,689,579 obs (correct)
 det <- rbind(det, det23) # 108,747,136 obs (correct)
@@ -92,14 +97,14 @@ rm(det21, det22, det23)
 
 # load common names ------------------------------------------------------------
 
-commonNames <- read.csv("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/laura_berman_diurnal_birds/data-clean/species_codes_thresholds.csv") # 241 species
+commonNames <- read.csv(file.path(base_dir, "laura_berman_diurnal_birds/data-clean/species_codes_thresholds.csv")) # 241 species
 
 
 # load effort ------------------------------------------------------------------
 
-effort21 <- read.csv("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/laura_berman_diurnal_birds/data-clean/2021_filtered_effort.csv") # 134,322 obs
-effort22 <- read.csv("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/laura_berman_diurnal_birds/data-clean/2022_filtered_effort.csv") # 127,002 obs
-effort23 <- read.csv("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/laura_berman_diurnal_birds/data-clean/2023_filtered_effort.csv") # 110,349 obs
+effort21 <- read.csv(file.path(base_dir, "laura_berman_diurnal_birds/data-clean/2021_filtered_effort.csv")) # 134,322 obs
+effort22 <- read.csv(file.path(base_dir, "laura_berman_diurnal_birds/data-clean/2022_filtered_effort.csv")) # 127,002 obs
+effort23 <- read.csv(file.path(base_dir, "laura_berman_diurnal_birds/data-clean/2023_filtered_effort.csv")) # 110,349 obs
 
 effort <- rbind(effort21, effort22) # 261,324 obs (correct)
 effort <- rbind(effort, effort23) # 371,673 obs (correct)
@@ -192,7 +197,7 @@ siteDetections[is.na(siteDetections)] <- 0
 
 # load fire data 2024
 # fire data comes from https://gis.data.ca.gov/datasets/CALFIRE-Forestry::california-fire-perimeters-all/explore 
-fire <- read_sf(dsn = "/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/Fire perimeters/California_Fire_Perimeters_2024") # 22,261 fires
+fire <- read_sf(dsn = file.path(base_dir, "Fire perimeters/California_Fire_Perimeters_2024")) # 22,261 fires
 # 1898-04-01 til 2023-12-22
 mapview(fire)
 names(fire)[names(fire) == 'YEAR_'] <- 'burnYear'
@@ -231,8 +236,8 @@ siteDetections <- subset(siteDetections, is.na(siteDetections$burnYear) | siteDe
 
 # get tahoe and yosemite boxes -------------------------------------------------
 
-tahoe <- read_sf("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/tahoe box/tahoe_shp.shp")
-yosemite <- read_sf("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/yosemite box/polygon_yosemite_box.shp")
+tahoe <- read_sf(file.path(base_dir, "tahoe box/tahoe_shp.shp"))
+yosemite <- read_sf(file.path(base_dir, "yosemite box/polygon_yosemite_box.shp"))
 mapview(tahoe) +
   mapview(yosemite)
 
@@ -258,8 +263,8 @@ sites.buffer <- st_buffer(siteDetections, dist = 150) # 649
 sites.buffer <- sites.buffer[c("cell_unit", "long", "lat")]
 
 # Nitrogen
-NitrogenYosemite <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/yosemite_20180622_Nitrogen_30m_polished.tif")
-NitrogenTahoe <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/tahoe_20180621_Nitrogen_30m_polished.tif")
+NitrogenYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Nitrogen_30m_polished.tif"))
+NitrogenTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Nitrogen_30m_polished.tif"))
 x <- list(NitrogenYosemite, NitrogenTahoe)
 Nitrogen <- do.call(merge, x)
 mapview(Nitrogen) +
@@ -276,8 +281,8 @@ mapview(Nitrogen) +
 
 
 # LMA
-LMAYosemite <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/yosemite_20180622_LMA_30m_polished.tif")
-LMATahoe <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/tahoe_20180621_LMA_30m_polished.tif")
+LMAYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_LMA_30m_polished.tif"))
+LMATahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_LMA_30m_polished.tif"))
 x <- list(LMAYosemite, LMATahoe)
 LMA <- do.call(merge, x)
 mapview(LMA) +
@@ -295,8 +300,8 @@ mapview(LMA) +
 
 
 # Cellulose
-CelluloseYosemite <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/yosemite_20180622_Cellulose_30m_polished.tif")
-CelluloseTahoe <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/tahoe_20180621_Cellulose_30m_polished.tif")
+CelluloseYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Cellulose_30m_polished.tif"))
+CelluloseTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Cellulose_30m_polished.tif"))
 x <- list(CelluloseYosemite, CelluloseTahoe)
 Cellulose <- do.call(merge, x)
 rm(CelluloseTahoe, CelluloseYosemite)
@@ -310,8 +315,8 @@ foliarTraits <- merge(foliarTraits, x) # 649
 
 
 # Calcium
-CalciumYosemite <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/yosemite_20180622_Calcium_30m_polished.tif")
-CalciumTahoe <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/tahoe_20180621_Calcium_30m_polished.tif")
+CalciumYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Calcium_30m_polished.tif"))
+CalciumTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Calcium_30m_polished.tif"))
 x <- list(CalciumYosemite, CalciumTahoe)
 Calcium <- do.call(merge, x)
 rm(CalciumTahoe, CalciumYosemite)
@@ -324,8 +329,8 @@ x <- as.data.frame(x)
 foliarTraits <- merge(foliarTraits, x) # 649 
 
 # Chlorophylls
-ChlorophyllsYosemite <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/yosemite_20180622_Chlorophylls_30m_polished.tif")
-ChlorophyllsTahoe <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/tahoe_20180621_Chlorophylls_30m_polished.tif")
+ChlorophyllsYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Chlorophylls_30m_polished.tif"))
+ChlorophyllsTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Chlorophylls_30m_polished.tif"))
 x <- list(ChlorophyllsYosemite, ChlorophyllsTahoe)
 Chlorophylls <- do.call(merge, x)
 rm(ChlorophyllsTahoe, ChlorophyllsYosemite)
@@ -339,8 +344,8 @@ foliarTraits <- merge(foliarTraits, x) # 649
 
 
 # Fiber
-FiberYosemite <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/yosemite_20180622_Fiber_30m_polished.tif")
-FiberTahoe <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/tahoe_20180621_Fiber_30m_polished.tif")
+FiberYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Fiber_30m_polished.tif"))
+FiberTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Fiber_30m_polished.tif"))
 x <- list(FiberYosemite, FiberTahoe)
 Fiber <- do.call(merge, x)
 rm(FiberTahoe, FiberYosemite)
@@ -354,8 +359,8 @@ foliarTraits <- merge(foliarTraits, x) # 649
 
 
 # Lignin
-LigninYosemite <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/yosemite_20180622_Lignin_30m_polished.tif")
-LigninTahoe <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/tahoe_20180621_Lignin_30m_polished.tif")
+LigninYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Lignin_30m_polished.tif"))
+LigninTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Lignin_30m_polished.tif"))
 x <- list(LigninYosemite, LigninTahoe)
 Lignin <- do.call(merge, x)
 rm(LigninTahoe, LigninYosemite)
@@ -369,8 +374,8 @@ foliarTraits <- merge(foliarTraits, x) # 649
 
 
 # NSC
-NSCYosemite <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/yosemite_20180622_NSC_30m_polished.tif")
-NSCTahoe <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/tahoe_20180621_NSC_30m_polished.tif")
+NSCYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_NSC_30m_polished.tif"))
+NSCTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_NSC_30m_polished.tif"))
 x <- list(NSCYosemite, NSCTahoe)
 NSC <- do.call(merge, x)
 rm(NSCTahoe, NSCYosemite)
@@ -384,8 +389,8 @@ foliarTraits <- merge(foliarTraits, x) # 649
 
 
 # Phenolics
-PhenolicsYosemite <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/yosemite_20180622_Phenolics_30m_polished.tif")
-PhenolicsTahoe <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/tahoe_20180621_Phenolics_30m_polished.tif")
+PhenolicsYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Phenolics_30m_polished.tif"))
+PhenolicsTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Phenolics_30m_polished.tif"))
 x <- list(PhenolicsYosemite, PhenolicsTahoe)
 Phenolics <- do.call(merge, x)
 rm(PhenolicsTahoe, PhenolicsYosemite)
@@ -399,8 +404,8 @@ foliarTraits <- merge(foliarTraits, x) # 649
 
 
 # Phosphorus
-PhosphorusYosemite <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/yosemite_20180622_Phosphorus_30m_polished.tif")
-PhosphorusTahoe <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/tahoe_20180621_Phosphorus_30m_polished.tif")
+PhosphorusYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Phosphorus_30m_polished.tif"))
+PhosphorusTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Phosphorus_30m_polished.tif"))
 x <- list(PhosphorusYosemite, PhosphorusTahoe)
 Phosphorus <- do.call(merge, x)
 rm(PhosphorusTahoe, PhosphorusYosemite)
@@ -414,8 +419,8 @@ foliarTraits <- merge(foliarTraits, x) # 649
 
 
 # Potassium
-PotassiumYosemite <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/yosemite_20180622_Potassium_30m_polished.tif")
-PotassiumTahoe <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/tahoe_20180621_Potassium_30m_polished.tif")
+PotassiumYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Potassium_30m_polished.tif"))
+PotassiumTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Potassium_30m_polished.tif"))
 x <- list(PotassiumYosemite, PotassiumTahoe)
 Potassium <- do.call(merge, x)
 rm(PotassiumTahoe, PotassiumYosemite)
@@ -429,8 +434,8 @@ foliarTraits <- merge(foliarTraits, x) # 649
 
 
 # Starch
-StarchYosemite <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/yosemite_20180622_Starch_30m_polished.tif")
-StarchTahoe <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/tahoe_20180621_Starch_30m_polished.tif")
+StarchYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Starch_30m_polished.tif"))
+StarchTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Starch_30m_polished.tif"))
 x <- list(StarchYosemite, StarchTahoe)
 Starch <- do.call(merge, x)
 rm(StarchTahoe, StarchYosemite)
@@ -444,8 +449,8 @@ foliarTraits <- merge(foliarTraits, x) # 649 x 5
 
 
 # Sugar
-SugarYosemite <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/yosemite_20180622_Sugar_30m_polished.tif")
-SugarTahoe <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/tahoe_20180621_Sugar_30m_polished.tif")
+SugarYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Sugar_30m_polished.tif"))
+SugarTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Sugar_30m_polished.tif"))
 x <- list(SugarYosemite, SugarTahoe)
 Sugar <- do.call(merge, x)
 rm(SugarTahoe, SugarYosemite)
@@ -459,8 +464,8 @@ foliarTraits <- merge(foliarTraits, x) # 649
 
 
 # Sulfur
-SulfurYosemite <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/yosemite_20180622_Sulfur_30m_polished.tif")
-SulfurTahoe <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/mosaics/tahoe_20180621_Sulfur_30m_polished.tif")
+SulfurYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Sulfur_30m_polished.tif"))
+SulfurTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Sulfur_30m_polished.tif"))
 x <- list(SulfurYosemite, SulfurTahoe)
 Sulfur <- do.call(merge, x)
 rm(SulfurTahoe, SulfurYosemite)
@@ -511,8 +516,8 @@ sites.buffer <- sites.buffer[c("cell_unit", "long", "lat")]
 
 # get biocube paths and files --------------------------------------------------
 
-CAbiocube_files <- list.files("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/California biocube layers")
-path_CA <- "/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/California biocube layers/"
+CAbiocube_files <- list.files(file.path(base_dir, "California biocube layers"))
+path_CA <- file.path(base_dir, "California biocube layers/")
 
 
 # get values for first var -----------------------------------------------------
@@ -567,8 +572,8 @@ write_csv(siteDetections_foliarTraits_BioCube, "siteDetections_foliarTraits_BioC
 ################################################################################
 
 # load data
-YosemiteGAP <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/Yosemite_GAP_2011.tif")
-TahoeGAP <- raster("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/Tahoe_GAP_2011.tif")
+YosemiteGAP <- raster(file.path(base_dir, "Yosemite_GAP_2011.tif"))
+TahoeGAP <- raster(file.path(base_dir, "Tahoe_GAP_2011.tif"))
 YosemiteGAP$landcover[YosemiteGAP$landcover==0] <- NA
 TahoeGAP$landcover[TahoeGAP$landcover==0] <- NA
 x <- list(YosemiteGAP, TahoeGAP)
@@ -583,7 +588,7 @@ landcover_ID <- raster::extract(GAP$layer, sites, na.rm=TRUE)
 siteDetections_foliarTraits_BioCube <- as.data.frame(cbind(siteDetections_foliarTraits_BioCube, landcover_ID))
 
 # add key names
-coverNames <- read.csv("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/USGS_CONUS_GAP_2011_key.csv")
+coverNames <- read.csv(file.path(base_dir, "USGS_CONUS_GAP_2011_key.csv"))
 coverNames <- coverNames[c("landcover_ID", "landcover_type")]
 siteDetections_foliarTraits_BioCube <- merge(siteDetections_foliarTraits_BioCube, coverNames)
 siteDetections_foliarTraits_BioCube$landcover_ID <- NULL
@@ -1123,8 +1128,8 @@ speciesPolygons$level <-NULL
 
 # save it ----------------------------------------------------------------------
 
-setwd("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/Draft 1")
-setwd("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/Shiny/Avispace4.0")
+setwd(file.path(base_dir, "Draft 1"))
+setwd(file.path(base_dir, "AviSpace_GitHub/AviSpace4.0"))
 
 write_rds(speciesPolygons, "speciesPolygons_jittered_detPerDay_20250624.rds")
 
@@ -1294,8 +1299,8 @@ pairwise_combinations$overlap_area <- mapply(calculate_overlaps,
 
 # save the dataframe -----------------------------------------------------------
 
-setwd("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/Draft 1")
-setwd("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/Shiny/Avispace4.0")
+setwd(file.path(base_dir, "Draft 1"))
+setwd(file.path(base_dir, "AviSpace_GitHub/AviSpace4.0"))
 
 write.csv(pairwise_combinations, "speciesNicheOverlapAreas_jittered_detPerWeek_20250624.csv")
 
@@ -1335,9 +1340,9 @@ write_rds(percentOverlap, "percentOverlap_20250624.rds")
 # toy - single species pair ----------------------------------------------------
 
 # read in data
-x <- st_read("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/RangeMaps/Yellow-rumped Warbler/yerwar_range_2022.gpkg")
+x <- st_read(file.path(base_dir, "RangeMaps/Yellow-rumped Warbler/yerwar_range_2022.gpkg"))
 mapview(x)
-y <- st_read("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/RangeMaps/Red-breasted Nuthatch/rebnut_range_2022.gpkg")
+y <- st_read(file.path(base_dir, "RangeMaps/Red-breasted Nuthatch/rebnut_range_2022.gpkg"))
 mapview(y)
 
 # keep only range in breeding season
@@ -1376,7 +1381,7 @@ mapview(x) +
 # LOOP - all species pairs -----------------------------------------------------
 
 # temporarily chage wd
-setwd("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/RangeMaps")
+setwd(file.path(base_dir, "RangeMaps"))
 
 # Get all folder names (aka species names) in the current working directory
 species_paths <- list.dirs(path = ".", full.names = FALSE, recursive = FALSE)
@@ -1449,18 +1454,18 @@ for (i in 1:(length(species_data) - 1)) {
 rangeOverlaps$overlap_percent <- rangeOverlaps$overlap_area / (rangeOverlaps$area1 + rangeOverlaps$area2 - rangeOverlaps$overlap_area)
 
 # go back to main wd
-setwd("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/Draft 1")
+setwd(file.path(base_dir, "Draft 1"))
 
 # write csv
 
-setwd("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/AviSpace_GitHub/AviSpace4.0")
+setwd(file.path(base_dir, "AviSpace_GitHub/AviSpace4.0"))
 
 write.csv(rangeOverlaps, "rangeOverlaps_20250624.csv")
 write_rds(rangeOverlaps, "rangeOverlaps_20250624.rds")
 
 
 # make dot version -------------------------------------------------------------
-dotVclean_nameMatches <-  read.csv("dotVclean_nameMatches.csv")
+dotVclean_nameMatches <-  read.csv(file.path(base_dir, "dotVclean_nameMatches.csv"))
 
 rangeOverlapsDot <- merge(rangeOverlaps, dotVclean_nameMatches, by.x = "species1", by.y = "cleanName")
 rangeOverlapsDot$species1 <- NULL
@@ -1482,11 +1487,11 @@ rangeOverlaps <- readRDS("rangeOverlaps_dotNames_20250623.rds")
 
 
 # read in data
-x <- st_read("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/RangeMaps/Yellow-rumped Warbler/yerwar_range_2022.gpkg")
+x <- st_read(file.path(base_dir, "RangeMaps/Yellow-rumped Warbler/yerwar_range_2022.gpkg"))
 mapview(x)
-y <- st_read("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/RangeMaps/Red-breasted Nuthatch/rebnut_range_2022.gpkg")
+y <- st_read(file.path(base_dir, "RangeMaps/Red-breasted Nuthatch/rebnut_range_2022.gpkg"))
 mapview(y)
-z <- st_read("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/RangeMaps/Purple Finch/purfin_range_2022.gpkg")
+z <- st_read(file.path(base_dir, "RangeMaps/Purple Finch/purfin_range_2022.gpkg"))
 mapview(z)
 
 
@@ -1543,7 +1548,7 @@ Species1 <- "California.Scrub.Jay"
 Species2 <- "Woodhouse.s.Scrub.Jay"
 
 # find the paths
-map_paths <- list.files("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/RangeMaps/", 
+map_paths <- list.files(file.path(base_dir, "RangeMaps/"), 
                         pattern = ".*_range_(2022|2023)\\.gpkg$", full.names = TRUE, recursive = TRUE)
 
 # get the maps
@@ -1594,7 +1599,7 @@ names(rangeOverlaps)[names(rangeOverlaps) == "overlap_percent"] <- "range_overla
 
 
 # match species name formats ---------------------------------------------------
-dotVclean_nameMatches <-  read.csv("dotVclean_nameMatches.csv")
+dotVclean_nameMatches <-  read.csv(file.path(base_dir, "dotVclean_nameMatches.csv"))
 
 NicheOverlap <- merge(NicheOverlap, dotVclean_nameMatches, by.x = "species1", by.y = "dotName")
 NicheOverlap$species1 <- NULL
@@ -1622,7 +1627,7 @@ NicheRangeOverlap <- rbind(merge1, merge2)
 # mark congeneric pairs --------------------------------------------------------
 
 # load scientific names
-SciNames <- read.csv("~/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/species_scientificNames.csv")
+SciNames <- read.csv(file.path(base_dir, "species_scientificNames.csv"))
 SciNames <- SciNames[, c("Species", "genus")]
 
 # Join to get genus for species1 and species2
@@ -1650,7 +1655,7 @@ NicheRangeOverlap$sisterSpecies <- ifelse(NicheRangeOverlap$species1 == "Califor
 # save it ----------------------------------------------------------------------
 #write.csv(NicheRangeOverlap, "NicheRangeOverlap_cleanNames_20250624.csv")
 #write_rds(NicheRangeOverlap, "NicheRangeOverlap_cleanNames_20250624.rds")
-NicheRangeOverlap <- readRDS("NicheRangeOverlap_cleanNames_20250624.rds")
+NicheRangeOverlap <- readRDS(file.path(base_dir, "NicheRangeOverlap_cleanNames_20250624.rds"))
 
 # make dot names version -------------------------------------------------------
 
@@ -2068,7 +2073,7 @@ ggsave("Figure5_matrix_sup.PDF", height=8, width=9)
 # total # sites
 # 06 July 2026 - Connor has added birdnet validation data to this table. do not overwrite.
 
-setwd("/Users/lauraberman/Library/CloudStorage/OneDrive-NationalUniversityofSingapore/Documents/Wisconsin/Townsend Lab/Traits and acoustics/Draft 2")
+setwd(file.path(base_dir, "Draft 2_PNAS"))
 
 
 speciesDetails <- merge(speciesAreas, speciesDetections)
