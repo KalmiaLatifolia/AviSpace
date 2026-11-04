@@ -43,6 +43,7 @@ library(coda)
 # 7) which points are too close to each other? - 624
 # 8) make a nice map - 684
 # 9) check for colinearity - 737
+# 9.1) combine species complexes
 # 10) Niche Space PCA - 803
 # 11) PCA loadings (supp figures) - 823
 # 12) render landcover labels - 892
@@ -805,6 +806,18 @@ siteDetections_foliarTraits_BioCube$Starch <- NULL
 write_rds(siteDetections_foliarTraits_BioCube, "siteDetections_foliarTraits_BioCube_20250522.rds")
 write_csv(siteDetections_foliarTraits_BioCube, "siteDetections_foliarTraits_BioCube_20250522.csv")
 siteDetections_foliarTraits_BioCube <- readRDS("siteDetections_foliarTraits_BioCube_20250522.rds")
+
+
+################################################################################
+# 9.1) Combine species complexes
+################################################################################
+# 4th Nov 2026
+# Need to combine species complexes with risk of co-detection
+# Cassins + Plumbeous Vireo = Solitary Vireo
+#
+
+
+
 
 ################################################################################
 # 10) Niche Space PCA
@@ -1635,8 +1648,9 @@ NicheRangeOverlap$sisterSpecies <- ifelse(NicheRangeOverlap$species1 == "Califor
                                           TRUE, FALSE)
 
 # save it ----------------------------------------------------------------------
-write.csv(NicheRangeOverlap, "NicheRangeOverlap_cleanNames_20250624.csv")
-write_rds(NicheRangeOverlap, "NicheRangeOverlap_cleanNames_20250624.rds")
+#write.csv(NicheRangeOverlap, "NicheRangeOverlap_cleanNames_20250624.csv")
+#write_rds(NicheRangeOverlap, "NicheRangeOverlap_cleanNames_20250624.rds")
+NicheRangeOverlap <- readRDS("NicheRangeOverlap_cleanNames_20250624.rds")
 
 # make dot names version -------------------------------------------------------
 
@@ -1650,8 +1664,8 @@ names(NicheRangeOverlapDot)[names(NicheRangeOverlapDot) == "dotName"] <- "specie
 
 # save dot version -------------------------------------------------------------
 
-write.csv(NicheRangeOverlapDot, "NicheRangeOverlap_dotNames_20250624.csv")
-write_rds(NicheRangeOverlapDot, "NicheRangeOverlap_dotNames_20250624.rds")
+#write.csv(NicheRangeOverlapDot, "NicheRangeOverlap_dotNames_20250624.csv")
+#write_rds(NicheRangeOverlapDot, "NicheRangeOverlap_dotNames_20250624.rds")
 NicheRangeOverlapDot <- readRDS("NicheRangeOverlap_dotNames_20250624.rds")
 
 # remove potentially cross-identified sister species ---------------------------
@@ -1835,7 +1849,17 @@ ggplot(NicheRangeOverlapDot,
   ylab("Range Overlap (%)")
 ggsave("NicheRangeOverlap_points_20260706.pdf", height=5, width=7)
 
-
+ggplot(subset(NicheRangeOverlapDot, NicheRangeOverlapDot$congeneric=="Same Genus"),
+       aes(x = niche_overlap_percent, y = range_overlap_percent, color = sisterSpecies)) +
+  geom_point(alpha = 0.8) +
+  scale_color_manual(values = c("darkgreen", "black")) +
+  facet_grid(~ congeneric) +
+  scale_x_continuous(labels = percent_format(accuracy = 1)) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  xlab("Niche Overlap (%)") +
+  ylab("Range Overlap (%)")
 
 ################################################################################
 # 23) permutation test
