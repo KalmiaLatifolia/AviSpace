@@ -7,21 +7,16 @@
 # load packages ----------------------------------------------------------------
 
 library(tidyverse)
-library(ggplot2)
-library(lubridate)
+library(vroom)
 library(sf)
-library(sp)
 library(mapview)
-library(terra)
 library(raster)
 library(ggspatial)
 library(corrplot)
-library(caret)
 library(factoextra)
-library(FactoMineR)
 library(ggrepel)
 library(rnaturalearth)
-library(ggdark)
+#library(ggdark)
 library(units)
 library(ggpmisc)
 library(basemaps)
@@ -32,6 +27,7 @@ library(scales)
 library(patchwork)
 library(MCMCglmm)
 library(coda)
+library(mgcv)
 
 # Table of contents ------------------------------------------------------------
 # 1) Processing ARU bioacoustic data  - 63
@@ -83,33 +79,50 @@ ARUlocations <- ARUlocations %>% distinct(survey_year, cell_unit, box, .keep_all
 
 # load detections --------------------------------------------------------------
 
-det21 <- read.csv(file.path(base_dir, "laura_berman_diurnal_birds/data-clean/2021_filtered_detections.csv")) # 41,264,999 obs
-det22 <- read.csv(file.path(base_dir, "laura_berman_diurnal_birds/data-clean/2022_filtered_detections.csv")) # 40,424,580 obs
-det23 <- read.csv(file.path(base_dir, "laura_berman_diurnal_birds/data-clean/2023_filtered_detections.csv")) # 27,057,557 obs
+# only cell_unit, species_code, survey_date, filename and relative_sec are
+# used downstream, so read just those columns (filename and relative_sec
+# identify the BirdNET segment, for the cross-identification check in 1.1). vroom reads and row-binds all three files in one call.
+# species_code is read as integer to match the species_codes_thresholds key.
+# full columns: "filename" "cell_unit" "year" "survey_date" "month" "day" "hour" "min" "second" "relative_sec" "species_code" "logit_score"
+det <- vroom(file.path(base_dir, "laura_berman_diurnal_birds/data-clean",
+                       c("2021_filtered_detections.csv",    # 41,264,999 obs
+                         "2022_filtered_detections.csv",    # 40,424,580 obs
+                         "2023_filtered_detections.csv")),  # 27,057,557 obs
+             delim = ",",
+             col_types = cols_only(cell_unit = col_character(),
+                                   survey_date = col_character(),
+                                   filename = col_character(),
+                                   relative_sec = col_double(),
+                                   species_code = col_integer()))
 
-det <- rbind(det21, det22) # 81,689,579 obs (correct)
-det <- rbind(det, det23) # 108,747,136 obs (correct)
-
-# names(det) = "filename" "cell_unit" "year" "survey_date" "month" "day" "hour" "min" "second" "relative_sec" "species_code" "logit_score"
-# still missing common names and exact times
-rm(det21, det22, det23)
+# nrow(det) should be 108,747,136 # correct
 
 
 # load common names ------------------------------------------------------------
+# this file also has BirdNET confidence thresholds
+# and includes species not actually in the dataset
+# a threshold of 100 is a placeholder for species who never occur
 
 commonNames <- read.csv(file.path(base_dir, "laura_berman_diurnal_birds/data-clean/species_codes_thresholds.csv")) # 241 species
 
 
 # load effort ------------------------------------------------------------------
 
-effort21 <- read.csv(file.path(base_dir, "laura_berman_diurnal_birds/data-clean/2021_filtered_effort.csv")) # 134,322 obs
-effort22 <- read.csv(file.path(base_dir, "laura_berman_diurnal_birds/data-clean/2022_filtered_effort.csv")) # 127,002 obs
-effort23 <- read.csv(file.path(base_dir, "laura_berman_diurnal_birds/data-clean/2023_filtered_effort.csv")) # 110,349 obs
-
-effort <- rbind(effort21, effort22) # 261,324 obs (correct)
-effort <- rbind(effort, effort23) # 371,673 obs (correct)
+# only cell_unit, date and aru_hours are used downstream. date is kept as
+# character (as read.csv returned it) so startDate/endDate in unit_effort
+# keep the same format.
+effort <- vroom(file.path(base_dir, "laura_berman_diurnal_birds/data-clean",
+                          c("2021_filtered_effort.csv",    # 134,322 obs
+                            "2022_filtered_effort.csv",    # 127,002 obs
+                            "2023_filtered_effort.csv")),  # 110,349 obs
+                delim = ",",
+                col_types = cols_only(cell_unit = col_character(),
+                                      date = col_character(),
+                                      aru_hours = col_double()))
+# nrow(effort) should be 371,673 # correct
 # effort includes rows for days with 0 effort
-# nrow(subset(effort, effort$aru_hours==7)) = 66,349 obs = total full recording days
+# nrow(subset(effort, effort$aru_hours==7)) = 66,349 obs = total full recording days (subsampling records 7 hrs per day)
+# nrow(subset(effort, aru_hours != 0 & aru_hours != 7)) = 3,975 partial days. We'll exclude these
 
 #effort$year <- substr(effort$date, 1, 4)
 unit_effort <- effort %>%
@@ -126,23 +139,284 @@ unit_effort <- effort %>%
 # min(unit_effort$active_days) = 10
 # max(unit_effort$active_days) = 108
 
-rm(effort21, effort22, effort23)
-
 write_rds(unit_effort, "unit_effort.rds")
 
-# summarize detections by site -------------------------------------------------
+################################################################################
+# 1.1) Adjust detection rates for day-of-year and year
+################################################################################
+# 04 Nov 2026 - reviewer request. Recorders were deployed on different dates
+# and in different years, so a raw site average partly reflects when a site
+# was sampled. For each species we fit the seasonal (doy) and annual curve of
+# vocal activity on full 7 h recording days, then rescale each site's
+# observed detections by the activity expected on the days it was sampled.
+#
+# model (per species, one row per site-day):
+#   n_det ~ s(doy) + year + s(cell_unit, bs = "re"),  negative binomial
+# site is a random effect so the curve is not confounded with where sites
+# were sampled early vs late.
+#
+# adjusted rate for site s:
+#   obs_per_day = sum(n_det_s) / sum(g(day_s)) * mean(g(reference days))
+# where g() is the population-level curve (site effect excluded). This is
+# the observed / expected ratio scaled to a common calendar. Sites with zero
+# detections stay at zero. A site sampled on every reference day in every
+# year keeps its raw mean daily count.
 
-siteDetections <- det %>% 
+# full 7 h recording days ------------------------------------------------------
+
+fullDays <- effort %>%
+  filter(aru_hours == 7) %>%
+  mutate(date = as.Date(date),
+         year = factor(format(date, "%Y")),
+         doy  = as.numeric(format(date, "%j"))) %>%
+  dplyr::select(cell_unit, date, year, doy)
+# nrow(fullDays) should be 66,349
+
+# cross-identification check ---------------------------------------------------
+# 05 Nov 2026. Candidate groups of species whose vocalizations BirdNET may
+# confuse. If two members of a group are detected in the same BirdNET segment
+# (same site, same file, same relative_sec), it is likely one vocalization
+# labelled as both. These counts are reported in the supplement and justify
+# which species are combined below.
+
+crossIDgroups <- data.frame(member = c("Vireo cassinii", "Vireo plumbeus",
+                                       "Sphyrapicus ruber", "Sphyrapicus nuchalis",
+                                       "Sphyrapicus thyroideus"),
+                            group = c("Vireo", "Vireo",
+                                      "Sphyrapicus", "Sphyrapicus", "Sphyrapicus"))
+crossIDgroups$species_code <- commonNames$species_code[match(crossIDgroups$member, commonNames$scientific_name)]
+stopifnot(!anyNA(crossIDgroups$species_code))
+
+memberDet <- det %>%
+  filter(species_code %in% crossIDgroups$species_code) %>%
+  dplyr::select(cell_unit, filename, relative_sec, survey_date, species_code) %>%
+  mutate(group = crossIDgroups$group[match(species_code, crossIDgroups$species_code)]) %>%
+  group_by(group, cell_unit, filename, relative_sec) %>%
+  mutate(n_members = n_distinct(species_code)) %>%
+  ungroup()
+
+# per species: % of its detections that share a segment with another group member
+crossID <- memberDet %>%
+  group_by(group, species_code) %>%
+  dplyr::summarise(total_detections = n(),
+                   shared_detections = sum(n_members > 1),
+                   .groups = "drop") %>%
+  mutate(pct_shared = 100 * shared_detections / total_detections) %>%
+  left_join(commonNames[c("species_code", "scientific_name", "common_name")], by = "species_code")
+crossID
+
+# per species pair: number of segments where both were detected
+crossIDpairs <- memberDet %>%
+  dplyr::select(group, cell_unit, filename, relative_sec, species_code) %>%
+  inner_join(., ., by = c("group", "cell_unit", "filename", "relative_sec"),
+             suffix = c("_1", "_2"), relationship = "many-to-many") %>%
+  filter(species_code_1 < species_code_2) %>%
+  dplyr::count(group, species_code_1, species_code_2, name = "shared_segments") %>%
+  mutate(species_1 = commonNames$common_name[match(species_code_1, commonNames$species_code)],
+         species_2 = commonNames$common_name[match(species_code_2, commonNames$species_code)])
+crossIDpairs
+
+write_csv(crossID, "crossIdentification_species_20261105.csv")
+write_csv(crossIDpairs, "crossIdentification_pairs_20261105.csv")
+rm(memberDet)
+
+# species complexes ------------------------------------------------------------
+# Based on the check above, only Red-breasted and Red-naped Sapsucker share a
+# substantial share of segments (~25% and ~35% of their detections).
+# Williamson's Sapsucker (0.5%) and Cassin's/Plumbeous Vireo (0.1% / 2.6%)
+# are kept separate.
+# The complex is added as an extra taxon. The member species are also kept
+# with their own (unmerged) detections, so later comparisons can use either.
+
+complexNames <- data.frame(common_name = "Red-breasted/Red-naped Sapsucker",
+                           scientific_name = "Sphyrapicus ruber/nuchalis")
+complexNames$species_code <- max(commonNames$species_code) + seq_len(nrow(complexNames))
+
+complexMembers <- data.frame(member = c("Sphyrapicus ruber", "Sphyrapicus nuchalis"),
+                             common_name = "Red-breasted/Red-naped Sapsucker")
+complexMembers$member_code <- commonNames$species_code[match(complexMembers$member, commonNames$scientific_name)]
+complexMembers$complex_code <- complexNames$species_code[match(complexMembers$common_name, complexNames$common_name)]
+stopifnot(!anyNA(complexMembers$member_code))
+
+complexDet <- det %>%
+  filter(species_code %in% complexMembers$member_code) %>%
+  dplyr::select(cell_unit, filename, relative_sec, survey_date, species_code) %>%
+  mutate(complex_code = complexMembers$complex_code[match(species_code, complexMembers$member_code)])
+
+# per complex: detections, segments, and duplicates removed
+crossIDcomplex <- complexDet %>%
+  group_by(complex_code, cell_unit, filename, relative_sec) %>%
+  dplyr::summarise(n_members = n_distinct(species_code), n = n(), .groups = "drop") %>%
+  group_by(complex_code) %>%
+  dplyr::summarise(member_detections = sum(n),
+                   segments = n(),
+                   shared_segments = sum(n_members > 1)) %>%
+  mutate(duplicates_removed = member_detections - segments,
+         pct_removed = 100 * duplicates_removed / member_detections) %>%
+  left_join(complexNames[c("species_code", "common_name")], by = c("complex_code" = "species_code"))
+crossIDcomplex
+write_csv(crossIDcomplex, "crossIdentification_complexes_20261105.csv")
+
+# keep one detection per segment, labelled as the complex
+complexDet <- complexDet %>%
+  distinct(complex_code, cell_unit, filename, relative_sec, .keep_all = TRUE) %>%
+  mutate(species_code = complex_code)
+
+# add the complex to the species name table
+commonNames <- bind_rows(commonNames, complexNames)
+
+# daily counts per site x species ----------------------------------------------
+# count first (fast on character dates), then parse the much smaller table.
+# all species as detected, plus the de-duplicated complex counts.
+
+dailyCounts <- bind_rows(
+  det %>%
+    dplyr::count(cell_unit, species_code, survey_date, name = "n_det"),
+  complexDet %>%
+    dplyr::count(cell_unit, species_code, survey_date, name = "n_det")) %>%
+  mutate(date = as.Date(lubridate::parse_date_time(survey_date,
+                                                   orders = c("Ymd", "mdY", "dmY")))) %>%
+  dplyr::select(-survey_date)
+rm(det, complexDet)
+
+# check: dates parsed and matched to effort days
+sum(is.na(dailyCounts$date)) # should be 0
+# share of detections that fall on full 7 h days (only these are used now)
+inFull <- paste(dailyCounts$cell_unit, dailyCounts$date) %in%
+  paste(fullDays$cell_unit, fullDays$date)
+sum(dailyCounts$n_det[inFull]) / sum(dailyCounts$n_det) #98% full days
+
+dailyCounts <- dailyCounts[inFull, ]
+rm(inFull)
+
+
+# which species have enough data to fit a curve? -------------------------------
+# same cut-offs as section 6: > 30 sites and >= 300 detections
+
+speciesTotals <- dailyCounts %>%
+  group_by(species_code) %>%
+  dplyr::summarise(n_sites = n_distinct(cell_unit),
+                   n_detections = sum(n_det))
+fitSpecies <- speciesTotals$species_code[speciesTotals$n_sites > 30 &
+                                           speciesTotals$n_detections >= 300]
+length(fitSpecies)
+
+# reference calendar -----------------------------------------------------------
+# days covered by most of the sampling (5th - 95th percentile of doy), all years
+
+refDoy <- seq(floor(quantile(fullDays$doy, 0.05)), ceiling(quantile(fullDays$doy, 0.95)))
+refGrid <- expand.grid(doy = refDoy, year = levels(fullDays$year))
+refGrid$year <- factor(refGrid$year, levels = levels(fullDays$year))
+refGrid$cell_unit <- factor(fullDays$cell_unit[1], levels = sort(unique(fullDays$cell_unit)))
+
+# fit one species --------------------------------------------------------------
+
+fit_phenology <- function(sp) {
+  d <- fullDays %>%
+    left_join(dailyCounts[dailyCounts$species_code == sp, c("cell_unit", "date", "n_det")],
+              by = c("cell_unit", "date")) %>%
+    mutate(n_det = replace_na(n_det, 0L),
+           cell_unit = factor(cell_unit, levels = levels(refGrid$cell_unit)))
+  m <- bam(n_det ~ s(doy, k = 10) + year + s(cell_unit, bs = "re"),
+           family = nb(), data = d, discrete = TRUE)
+
+  # population-level curve (site effect excluded) on each sampled day
+  d$g <- predict(m, newdata = d, type = "response", exclude = "s(cell_unit)")
+  gRef <- mean(predict(m, newdata = refGrid, type = "response", exclude = "s(cell_unit)"))
+
+  rates <- d %>%
+    group_by(cell_unit) %>%
+    dplyr::summarise(n_detections = sum(n_det),
+                     active_days = n(),
+                     expected = sum(g)) %>%
+    mutate(cell_unit = as.character(cell_unit),
+           species_code = sp,
+           obs_per_day_raw = n_detections / active_days,
+           obs_per_day = n_detections / expected * gRef) %>%
+    filter(n_detections > 0)
+
+  # curve for the supplementary figure (link scale CI, back-transformed)
+  pr <- predict(m, newdata = refGrid, type = "link", se.fit = TRUE, exclude = "s(cell_unit)")
+  curve <- refGrid %>%
+    dplyr::select(doy, year) %>%
+    mutate(species_code = sp,
+           fit = exp(pr$fit),
+           lwr = exp(pr$fit - 1.96 * pr$se.fit),
+           upr = exp(pr$fit + 1.96 * pr$se.fit))
+
+  sm <- summary(m)
+  info <- data.frame(species_code = sp,
+                     doy_edf = sm$s.table["s(doy)", "edf"],
+                     doy_p = sm$s.table["s(doy)", "p-value"],
+                     dev_expl = sm$dev.expl,
+                     t(setNames(coef(m)[grep("^year", names(coef(m)))],
+                                grep("^year", names(coef(m)), value = TRUE))))
+  list(rates = rates, curve = curve, info = info)
+}
+
+# fit all species --------------------------------------------------------------
+
+phenoFits <- map(setNames(fitSpecies, fitSpecies),
+                 ~ tryCatch(fit_phenology(.x),
+                            error = function(e) { message("species ", .x, ": ", conditionMessage(e)); NULL }),
+                 .progress = TRUE)
+failed <- names(phenoFits)[map_lgl(phenoFits, is.null)]
+failed # species that did not fit fall back to the raw rate below
+
+phenoRates <- map_dfr(phenoFits, "rates")
+phenoCurves <- map_dfr(phenoFits, "curve")
+phenoInfo <- map_dfr(phenoFits, "info")
+
+# raw rates for species not fitted (too few data; removed later in section 6)
+
+rawRates <- dailyCounts %>%
+  filter(!species_code %in% phenoRates$species_code) %>%
   group_by(cell_unit, species_code) %>%
-  dplyr::summarise(n_detections = n())
-# siteDetections = 113,003 obs = one row per site x year x species combination, so this count doesn't mean much
-# after removing year = 59,626 = one row per site x species
+  dplyr::summarise(n_detections = sum(n_det), .groups = "drop") %>%
+  merge(unit_effort[c("cell_unit", "active_days")]) %>%
+  mutate(obs_per_day_raw = n_detections / active_days,
+         obs_per_day = obs_per_day_raw)
+
+siteDetections <- bind_rows(phenoRates[c("cell_unit", "species_code", "n_detections", "obs_per_day_raw", "obs_per_day")],
+                            rawRates[c("cell_unit", "species_code", "n_detections", "obs_per_day_raw", "obs_per_day")])
+
+# how much did the adjustment change site values?
+cor(phenoRates$obs_per_day_raw, phenoRates$obs_per_day, method = "spearman") #0.99 spearman's correlation
+summary(phenoRates$obs_per_day / phenoRates$obs_per_day_raw)
+
+phenoInfo <- merge(phenoInfo, commonNames[c("species_code", "common_name")])
+phenoInfo <- merge(phenoInfo, speciesTotals)
+write_rds(phenoInfo, "phenologyModels_20261104.rds")
+write_csv(phenoInfo, "phenologyModels_20261104.csv")
+write_rds(phenoCurves, "phenologyCurves_20261104.rds")
+
+# supplementary figure: species phenology curves -------------------------------
+# predicted daily detections at an average site, by year
+
+phenoCurves <- merge(phenoCurves, commonNames[c("species_code", "common_name")])
+
+ggplot(phenoCurves, aes(x = as.Date(doy - 1, origin = "2021-01-01"), y = fit,
+                        color = year, fill = year)) +
+  geom_ribbon(aes(ymin = lwr, ymax = upr), alpha = 0.2, color = NA) +
+  geom_line(linewidth = 0.4) +
+  facet_wrap(~ common_name, scales = "free_y", ncol = 8) +
+  scale_x_date(date_labels = "%b", date_breaks = "1 month") +
+  labs(x = "Date", y = "Predicted detections per day (average site)",
+       color = "Year", fill = "Year") +
+  theme_minimal(base_size = 7) +
+  theme(strip.text = element_text(size = 6),
+        legend.position = "bottom")
+ggsave("FigureS_phenologyCurves_20261104.pdf", height = 14, width = 11)
 
 # combine detections, effort, and common names ---------------------------------
 
-siteDetections <- merge(siteDetections, commonNames) # still only 113,003 obs. correct # 59626
-# merging with unit_effort loses some observations because we only include sites with full 7 hour days
-siteDetections <- merge(siteDetections, unit_effort) # 112,805 obs # 59626
+siteDetections <- merge(siteDetections, commonNames)
+siteDetections <- merge(siteDetections, unit_effort)
+
+# raw detection counts on 7 h days per site x species (used in section 6)
+siteCounts <- siteDetections[c("cell_unit", "common_name", "n_detections")]
+siteCounts$species <- make.names(siteCounts$common_name) # matches column names later on
+write_rds(siteCounts, "siteCounts_20261105.rds")
 
 
 # check max dist between redeployments -----------------------------------------
@@ -160,8 +434,8 @@ max_dists_by_cell <- ARUlocations %>%
   group_by(cell_unit) %>%
   summarise(max_distance_m = max_dist_within_cell(cur_data()))
 
-hist(max_dists_by_cell$max_distance_m)
-mean(max_dists_by_cell$max_distance_m)
+hist(max_dists_by_cell$max_distance_m) # mostly very small
+mean(max_dists_by_cell$max_distance_m) # avg 27m between redeployments. Close enough.
 
 # combine years with the same cell_unit ----------------------------------------
 
@@ -174,16 +448,17 @@ siteDetections <- merge(siteDetections, ARUlocations)
 
 # remove rows where active days < 30 -------------------------------------------
 
-siteDetections <- subset(siteDetections, siteDetections$active_days > 30) # 58671 # 59342
+siteDetections <- subset(siteDetections, siteDetections$active_days > 30) # 59944 obs
 
 # pivot wider ------------------------------------------------------------------
 # [I will want active_days back later]
-siteDetections$obs_per_day <- siteDetections$n_detections / siteDetections$active_days
+# obs_per_day is now the day-of-year and year adjusted rate from section 1.1
+# (unadjusted rate kept in obs_per_day_raw)
 siteDetections <- siteDetections[c("cell_unit", "common_name", "obs_per_day", "long", "lat")]
 siteDetections <- siteDetections %>%
   group_by(cell_unit) %>%
   pivot_wider(names_from = common_name,
-              values_from = obs_per_day) # 2016 obs. one per site.
+              values_from = obs_per_day) # 889 obs. one per site.
 siteDetections[is.na(siteDetections)] <- 0
 
 
@@ -615,10 +890,18 @@ siteDetections_foliarTraits_BioCube$Yellow.breasted.Chat <- NULL
 
 # how many times in total was a species detected? ------------------------------
 
-# add back active days
-x <- merge(siteDetections_foliarTraits_BioCube, unit_effort[c("cell_unit", "active_days")])
-x <- sort(colSums(x[ , 5:96] * x$active_days, na.rm = TRUE))
-speciesDetections <- data.frame(species = names(x), totalDetections = as.numeric(x))
+# 05 Nov 2026. Use the raw counts on 7 h days (siteCounts, section 1.1) at the
+# sites retained here. obs_per_day x active_days is no longer a count because
+# obs_per_day is now adjusted for day of year and year.
+# siteCounts <- readRDS("siteCounts_20261105.rds")
+spCols <- intersect(names(siteDetections_foliarTraits_BioCube), unique(siteCounts$species))
+speciesDetections <- siteCounts %>%
+  filter(cell_unit %in% siteDetections_foliarTraits_BioCube$cell_unit,
+         species %in% spCols) %>%
+  group_by(species) %>%
+  dplyr::summarise(totalDetections = sum(n_detections)) %>%
+  arrange(totalDetections) %>%
+  as.data.frame()
 
 # remove species with < 300 detections
 siteDetections_foliarTraits_BioCube$Brewer.s.Sparrow <- NULL
