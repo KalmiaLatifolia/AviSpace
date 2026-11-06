@@ -35,30 +35,30 @@ library(mgcv)
 # 3) Adjust detection rates for day-of-year and year - 244
 # 4) Site buffers - 473
 # 5) Remove burned areas - 500
-# 6) Get foliar traits - 561
-# 7) Get biocube variables - 826
-# 8) add USGS CONUS GAP 2011 landcover type - 893
-# 9) remove species with insufficient data - 920
-# 10) which points are too close to each other? - 967
-# 11) make a nice map - 1027
-# 12) check for colinearity - 1080
-# 13) Niche Space PCA - 1147
-# 14) PCA loadings (supp figures) - 1167
-# 15) render landcover labels - 1236
-# 16) test plot for errored species polygons - 1319
-# 17) Species Niche Polygons - 1358
-# 18) plot 2 species niche overlap - 1457
-# 19) Calculate all pairwise overlaps - 1585
-# 20) Species niche Areas & Percent overlap - 1629
-# 21) calculate Range overlaps - 1655
-# 22) Range Overlap Maps - 1804
-# 23) Combine range overlaps and niche overlaps - 1909
-# 24) plot range vs niche overlap - 1943
-# 25) Mixed effects model - 2035
-# 26) permutation test - 2189
-# 27) Figure 4 niche areas - 2232
-# 28) Figure 5 - matrix - 2248
-# 29) Species details supp table - 2387
+# 6) Get foliar traits - 567
+# 7) Get biocube variables - 656
+# 8) add USGS CONUS GAP 2011 landcover type - 732
+# 9) remove species with insufficient data - 759
+# 10) which points are too close to each other? - 806
+# 11) make a nice map - 866
+# 12) check for colinearity - 919
+# 13) Niche Space PCA - 986
+# 14) PCA loadings (supp figures) - 1006
+# 15) render landcover labels - 1075
+# 16) test plot for errored species polygons - 1158
+# 17) Species Niche Polygons - 1197
+# 18) plot 2 species niche overlap - 1296
+# 19) Calculate all pairwise overlaps - 1424
+# 20) Species niche Areas & Percent overlap - 1468
+# 21) calculate Range overlaps - 1494
+# 22) Range Overlap Maps - 1643
+# 23) Combine range overlaps and niche overlaps - 1748
+# 24) plot range vs niche overlap - 1782
+# 25) Mixed effects model - 1874
+# 26) permutation test - 2028
+# 27) Figure 4 niche areas - 2071
+# 28) Figure 5 - matrix - 2087
+# 29) Species details supp table - 2226
 
 
 # working directory  -----------------------------------------------------------
@@ -516,6 +516,7 @@ fire <- fire %>%
   filter(!is.na(fireDate), fireDate >= as.Date("2018-06-21")) %>%
   dplyr::select(fireDate)
 fire <- st_make_valid(st_transform(fire, 3310)) # California Albers, meters
+fire <- st_cast(st_zm(fire), "MULTIPOLYGON") # one geometry type, so mapview can draw it
 # 2,091 fires
 
 # burned sites for each buffer size --------------------------------------------
@@ -531,7 +532,9 @@ burnedSites <- lapply(siteBuffers, function(buf) {
 })
 sapply(burnedSites, nrow) # number of burned sites for 50, 150 and 300 m buffers
 
-mapview(siteBuffers[["150"]]) + mapview(fire)
+# map only the fires that touch a 300 m buffer (faster to draw)
+fireNear <- fire[lengths(st_intersects(fire, siteBuffers[["300"]])) > 0, ]
+mapview(siteBuffers[["150"]]) + mapview(fireNear, col.regions = "red")
 
 # three versions of siteDetections, one per buffer size ------------------------
 # each version drops the sites that burned within its own buffer
@@ -575,321 +578,154 @@ mapview(tahoe) +
 mapview(siteDetectionsBuffers[["150"]]) + mapview(tahoe) + mapview(yosemite)
 # not necessary
 
+# buffers for the sites kept after fire removal --------------------------------
+# one set per buffer size (sections 4-5). Transformed to WGS84 as before.
 
+bufferPolys <- lapply(names(siteBuffers), function(b)
+  siteBuffers[[b]] %>%
+    filter(cell_unit %in% siteDetectionsBuffers[[b]]$cell_unit) %>%
+    st_transform(4326) %>%
+    dplyr::select(cell_unit, long, lat))
+names(bufferPolys) <- names(siteBuffers)
 
-# buffer site locations
-# TODO 06 Nov 2026: run this section on all three buffer versions
-# (siteBuffers and siteDetectionsBuffers, sections 4-5). For now it uses 150 m.
-sites.buffer <- siteBuffers[["150"]] %>%
-  filter(cell_unit %in% siteDetectionsBuffers[["150"]]$cell_unit) %>%
-  st_transform(4326)
-sites.buffer <- sites.buffer[c("cell_unit", "long", "lat")]
+# foliar trait mosaics ---------------------------------------------------------
+# each trait has a Yosemite and a Tahoe mosaic (30 m), merged into one layer
 
-# Nitrogen
-NitrogenYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Nitrogen_30m_polished.tif"))
-NitrogenTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Nitrogen_30m_polished.tif"))
-x <- list(NitrogenYosemite, NitrogenTahoe)
-Nitrogen <- do.call(merge, x)
-mapview(Nitrogen) +
-  mapview(sites.buffer)
-rm(NitrogenTahoe, NitrogenYosemite)
+traitNames <- c("Nitrogen", "LMA", "Cellulose", "Calcium", "Chlorophylls",
+                "Fiber", "Lignin", "NSC", "Phenolics", "Phosphorus",
+                "Potassium", "Starch", "Sugar", "Sulfur")
 
-x <- raster::extract(Nitrogen$layer, sites.buffer, weights=TRUE, na.rm=TRUE, fun=mean)
-x <- cbind(sites.buffer, x)
-colnames(x)[colnames(x)=="x"] <- "Nitrogen"
-x$Nitrogen[x$Nitrogen == 0] <- NA
-foliarTraits <- x # 649 x 5
-mapview(Nitrogen) +
-  mapview(foliarTraits, zcol="Nitrogen")
+load_trait <- function(trait) {
+  merge(raster(file.path(base_dir, "mosaics", paste0("yosemite_20180622_", trait, "_30m_polished.tif"))),
+        raster(file.path(base_dir, "mosaics", paste0("tahoe_20180621_", trait, "_30m_polished.tif"))))
+}
 
+# check one trait against the buffers
+mapview(load_trait("Nitrogen")) + mapview(bufferPolys[["150"]])
 
-# LMA
-LMAYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_LMA_30m_polished.tif"))
-LMATahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_LMA_30m_polished.tif"))
-x <- list(LMAYosemite, LMATahoe)
-LMA <- do.call(merge, x)
-mapview(LMA) +
-  mapview(sites.buffer)
-rm(LMATahoe, LMAYosemite)
+# area-weighted mean of each trait within each buffer --------------------------
+# (slow) each mosaic is loaded once and extracted for all three buffer sizes.
+# 0 = no data in the mosaics, set to NA.
 
-x <- raster::extract(LMA$layer, sites.buffer, weights=TRUE, na.rm=TRUE, fun=mean)
-x <- cbind(sites.buffer, x)
-colnames(x)[colnames(x)=="x"] <- "LMA"
-x$LMA[x$LMA == 0] <- NA
-x <- as.data.frame(x)
-foliarTraits <- merge(foliarTraits, x) # 649 x 6
-mapview(LMA) +
-  mapview(foliarTraits, zcol="LMA")
+# results tables (cell_unit, long, lat), one per buffer size. The extraction
+# below uses the buffer polygons in bufferPolys; only these output tables
+# have no geometry. Rows are in the same order as bufferPolys.
+foliarTraitsBuffers <- lapply(bufferPolys, st_drop_geometry)
 
+for (trait in traitNames) {
+  r <- load_trait(trait)
+  for (b in names(bufferPolys)) {
+    v <- as.numeric(raster::extract(r, bufferPolys[[b]], weights = TRUE,
+                                    na.rm = TRUE, fun = mean))
+    v[v == 0] <- NA
+    foliarTraitsBuffers[[b]][[trait]] <- v
+  }
+  message(trait, " done")
+}
+rm(r, v)
 
-# Cellulose
-CelluloseYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Cellulose_30m_polished.tif"))
-CelluloseTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Cellulose_30m_polished.tif"))
-x <- list(CelluloseYosemite, CelluloseTahoe)
-Cellulose <- do.call(merge, x)
-rm(CelluloseTahoe, CelluloseYosemite)
+# merge foliar traits with siteDetections and remove sites with no trait data --
 
-x <- raster::extract(Cellulose$layer, sites.buffer, weights=TRUE, na.rm=TRUE, fun=mean)
-x <- cbind(sites.buffer, x)
-colnames(x)[colnames(x)=="x"] <- "Cellulose"
-x$Cellulose[x$Cellulose == 0] <- NA
-x <- as.data.frame(x)
-foliarTraits <- merge(foliarTraits, x) # 649 
+siteDetections_foliarTraitsBuffers <- lapply(names(bufferPolys), function(b) {
+  x <- merge(siteDetectionsBuffers[[b]],
+             foliarTraitsBuffers[[b]][c("cell_unit", traitNames)],
+             by = "cell_unit")
+  x[!is.na(x$Nitrogen), ]
+})
+names(siteDetections_foliarTraitsBuffers) <- names(bufferPolys)
+sapply(siteDetections_foliarTraitsBuffers, nrow) # sites with trait data for 50, 150, 300 m (580 before, 150 m)
+# 50m 584 sites 
+# 150m 578 sites
+# 300m 570 sites
 
+mapview(siteDetections_foliarTraitsBuffers[["150"]], zcol = "Nitrogen")
 
-# Calcium
-CalciumYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Calcium_30m_polished.tif"))
-CalciumTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Calcium_30m_polished.tif"))
-x <- list(CalciumYosemite, CalciumTahoe)
-Calcium <- do.call(merge, x)
-rm(CalciumTahoe, CalciumYosemite)
+# save -------------------------------------------------------------------------
 
-x <- raster::extract(Calcium$layer, sites.buffer, weights=TRUE, na.rm=TRUE, fun=mean)
-x <- cbind(sites.buffer, x)
-colnames(x)[colnames(x)=="x"] <- "Calcium"
-x$Calcium[x$Calcium == 0] <- NA
-x <- as.data.frame(x)
-foliarTraits <- merge(foliarTraits, x) # 649 
-
-# Chlorophylls
-ChlorophyllsYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Chlorophylls_30m_polished.tif"))
-ChlorophyllsTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Chlorophylls_30m_polished.tif"))
-x <- list(ChlorophyllsYosemite, ChlorophyllsTahoe)
-Chlorophylls <- do.call(merge, x)
-rm(ChlorophyllsTahoe, ChlorophyllsYosemite)
-
-x <- raster::extract(Chlorophylls$layer, sites.buffer, weights=TRUE, na.rm=TRUE, fun=mean)
-x <- cbind(sites.buffer, x)
-colnames(x)[colnames(x)=="x"] <- "Chlorophylls"
-x$Chlorophylls[x$Chlorophylls == 0] <- NA
-x <- as.data.frame(x)
-foliarTraits <- merge(foliarTraits, x) # 649 
-
-
-# Fiber
-FiberYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Fiber_30m_polished.tif"))
-FiberTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Fiber_30m_polished.tif"))
-x <- list(FiberYosemite, FiberTahoe)
-Fiber <- do.call(merge, x)
-rm(FiberTahoe, FiberYosemite)
-
-x <- raster::extract(Fiber$layer, sites.buffer, weights=TRUE, na.rm=TRUE, fun=mean)
-x <- cbind(sites.buffer, x)
-colnames(x)[colnames(x)=="x"] <- "Fiber"
-x$Fiber[x$Fiber == 0] <- NA
-x <- as.data.frame(x)
-foliarTraits <- merge(foliarTraits, x) # 649 
-
-
-# Lignin
-LigninYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Lignin_30m_polished.tif"))
-LigninTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Lignin_30m_polished.tif"))
-x <- list(LigninYosemite, LigninTahoe)
-Lignin <- do.call(merge, x)
-rm(LigninTahoe, LigninYosemite)
-
-x <- raster::extract(Lignin$layer, sites.buffer, weights=TRUE, na.rm=TRUE, fun=mean)
-x <- cbind(sites.buffer, x)
-colnames(x)[colnames(x)=="x"] <- "Lignin"
-x$Lignin[x$Lignin == 0] <- NA
-x <- as.data.frame(x)
-foliarTraits <- merge(foliarTraits, x) # 649 
-
-
-# NSC
-NSCYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_NSC_30m_polished.tif"))
-NSCTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_NSC_30m_polished.tif"))
-x <- list(NSCYosemite, NSCTahoe)
-NSC <- do.call(merge, x)
-rm(NSCTahoe, NSCYosemite)
-
-x <- raster::extract(NSC$layer, sites.buffer, weights=TRUE, na.rm=TRUE, fun=mean)
-x <- cbind(sites.buffer, x)
-colnames(x)[colnames(x)=="x"] <- "NSC"
-x$NSC[x$NSC == 0] <- NA
-x <- as.data.frame(x)
-foliarTraits <- merge(foliarTraits, x) # 649
-
-
-# Phenolics
-PhenolicsYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Phenolics_30m_polished.tif"))
-PhenolicsTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Phenolics_30m_polished.tif"))
-x <- list(PhenolicsYosemite, PhenolicsTahoe)
-Phenolics <- do.call(merge, x)
-rm(PhenolicsTahoe, PhenolicsYosemite)
-
-x <- raster::extract(Phenolics$layer, sites.buffer, weights=TRUE, na.rm=TRUE, fun=mean)
-x <- cbind(sites.buffer, x)
-colnames(x)[colnames(x)=="x"] <- "Phenolics"
-x$Phenolics[x$Phenolics == 0] <- NA
-x <- as.data.frame(x)
-foliarTraits <- merge(foliarTraits, x) # 649
-
-
-# Phosphorus
-PhosphorusYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Phosphorus_30m_polished.tif"))
-PhosphorusTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Phosphorus_30m_polished.tif"))
-x <- list(PhosphorusYosemite, PhosphorusTahoe)
-Phosphorus <- do.call(merge, x)
-rm(PhosphorusTahoe, PhosphorusYosemite)
-
-x <- raster::extract(Phosphorus$layer, sites.buffer, weights=TRUE, na.rm=TRUE, fun=mean)
-x <- cbind(sites.buffer, x)
-colnames(x)[colnames(x)=="x"] <- "Phosphorus"
-x$Phosphorus[x$Phosphorus == 0] <- NA
-x <- as.data.frame(x)
-foliarTraits <- merge(foliarTraits, x) # 649
-
-
-# Potassium
-PotassiumYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Potassium_30m_polished.tif"))
-PotassiumTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Potassium_30m_polished.tif"))
-x <- list(PotassiumYosemite, PotassiumTahoe)
-Potassium <- do.call(merge, x)
-rm(PotassiumTahoe, PotassiumYosemite)
-
-x <- raster::extract(Potassium$layer, sites.buffer, weights=TRUE, na.rm=TRUE, fun=mean)
-x <- cbind(sites.buffer, x)
-colnames(x)[colnames(x)=="x"] <- "Potassium"
-x$Potassium[x$Potassium == 0] <- NA
-x <- as.data.frame(x)
-foliarTraits <- merge(foliarTraits, x) # 649
-
-
-# Starch
-StarchYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Starch_30m_polished.tif"))
-StarchTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Starch_30m_polished.tif"))
-x <- list(StarchYosemite, StarchTahoe)
-Starch <- do.call(merge, x)
-rm(StarchTahoe, StarchYosemite)
-
-x <- raster::extract(Starch$layer, sites.buffer, weights=TRUE, na.rm=TRUE, fun=mean)
-x <- cbind(sites.buffer, x)
-colnames(x)[colnames(x)=="x"] <- "Starch"
-x$Starch[x$Starch == 0] <- NA
-x <- as.data.frame(x)
-foliarTraits <- merge(foliarTraits, x) # 649 x 5
-
-
-# Sugar
-SugarYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Sugar_30m_polished.tif"))
-SugarTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Sugar_30m_polished.tif"))
-x <- list(SugarYosemite, SugarTahoe)
-Sugar <- do.call(merge, x)
-rm(SugarTahoe, SugarYosemite)
-
-x <- raster::extract(Sugar$layer, sites.buffer, weights=TRUE, na.rm=TRUE, fun=mean)
-x <- cbind(sites.buffer, x)
-colnames(x)[colnames(x)=="x"] <- "Sugar"
-x$Sugar[x$Sugar == 0] <- NA
-x <- as.data.frame(x)
-foliarTraits <- merge(foliarTraits, x) # 649
-
-
-# Sulfur
-SulfurYosemite <- raster(file.path(base_dir, "mosaics/yosemite_20180622_Sulfur_30m_polished.tif"))
-SulfurTahoe <- raster(file.path(base_dir, "mosaics/tahoe_20180621_Sulfur_30m_polished.tif"))
-x <- list(SulfurYosemite, SulfurTahoe)
-Sulfur <- do.call(merge, x)
-rm(SulfurTahoe, SulfurYosemite)
-
-x <- raster::extract(Sulfur$layer, sites.buffer, weights=TRUE, na.rm=TRUE, fun=mean)
-x <- cbind(sites.buffer, x)
-colnames(x)[colnames(x)=="x"] <- "Sulfur"
-x$Sulfur[x$Sulfur == 0] <- NA
-x <- as.data.frame(x)
-foliarTraits <- merge(foliarTraits, x) # 649
-
-# save foliar traits -----------------------------------------------------------
-
-write_rds(foliarTraits, "foliarTraits_20250502.rds")
-x <- as.data.frame(foliarTraits)
-x$geometry <- NULL 
-write_csv(x, "foliarTraits_20250502.csv")
-
-# merge foliar traits with siteDetections --------------------------------------
-
-foliarTraits <- as.data.frame(foliarTraits)
-foliarTraits$geometry <- NULL 
-siteDetections_foliarTraits <- merge(siteDetectionsBuffers[["150"]], foliarTraits) # TODO all three buffers
-
-# subset to remove NA rows -----------------------------------------------------
-
-siteDetections_foliarTraits <- siteDetections_foliarTraits[!is.na(siteDetections_foliarTraits$Nitrogen), ] #580
-
-# save foliar traits x siteDetections ------------------------------------------
-
-write_rds(siteDetections_foliarTraits, "siteDetections_foliarTraits_20250502.rds")
-x <- as.data.frame(siteDetections_foliarTraits)
-x$geometry <- NULL
-write_csv(x, "siteDetections_foliarTraits_20250502.csv")
+for (b in names(bufferPolys)) {
+  write_csv(foliarTraitsBuffers[[b]], paste0("foliarTraits_buffer", b, "m_20261106.csv"))
+  write_rds(siteDetections_foliarTraitsBuffers[[b]],
+            paste0("siteDetections_foliarTraits_buffer", b, "m_20261106.rds"))
+  x <- st_drop_geometry(siteDetections_foliarTraitsBuffers[[b]])
+  write_csv(x, paste0("siteDetections_foliarTraits_buffer", b, "m_20261106.csv"))
+}
+rm(x)
 
 
 ################################################################################
 # 7) Get biocube variables
 ################################################################################
 
-# update buffer -----------------------------------------------------------------
+# buffers for the sites kept after the foliar trait step ------------------------
+# one set per buffer size, as in section 6
 
-# buffer site locations
-# TODO 06 Nov 2026: run on all three buffer versions. For now it uses 150 m.
-sites.buffer <- siteBuffers[["150"]] %>%
-  filter(cell_unit %in% siteDetections_foliarTraits$cell_unit) %>%
-  st_transform(4326)
-sites.buffer <- sites.buffer[c("cell_unit", "long", "lat")]
+bufferPolys <- lapply(names(siteBuffers), function(b)
+  siteBuffers[[b]] %>%
+    filter(cell_unit %in% siteDetections_foliarTraitsBuffers[[b]]$cell_unit) %>%
+    st_transform(4326) %>%
+    dplyr::select(cell_unit, long, lat))
+names(bufferPolys) <- names(siteBuffers)
 
 
 # get biocube paths and files --------------------------------------------------
 
-CAbiocube_files <- list.files(file.path(base_dir, "California biocube layers"))
-path_CA <- file.path(base_dir, "California biocube layers/")
+path_CA <- file.path(base_dir, "California biocube layers")
+CAbiocube_files <- list.files(path_CA, pattern = "\\.tif$") # 96 layers
 
 
-# get values for first var -----------------------------------------------------
+# area-weighted mean of each layer within each buffer -------------------(slow)
+# each layer is loaded once and extracted for all three buffer sizes.
+# Results tables have no geometry; the extraction uses the polygons in bufferPolys.
 
-x <- raster(paste(path_CA, CAbiocube_files[1], sep="")) # rasterize the file
-x <- raster::extract(x, sites.buffer, weights=TRUE, na.rm=TRUE, fun=mean) # extract values in buffer around each ARU
-x <- as.data.frame(cbind(sites.buffer, x)) # make it a dataframe
-colnames(x)[colnames(x)=="x"] <- paste(CAbiocube_files[1]) # give it an informative name
-x$geometry <- NULL 
-BioCube_vars <- x # this is the one line that changes outside the loop
+BioCube_varsBuffers <- lapply(bufferPolys, st_drop_geometry)
 
-
-# loop the rest ----------------------------------------------------------(slow)
-
-for(i in 2:length(CAbiocube_files)) {
-  x <- raster(paste(path_CA, CAbiocube_files[i], sep=""))
-  x <- raster::extract(x, sites.buffer, weights=TRUE, na.rm=TRUE, fun=mean)
-  x <- as.data.frame(cbind(sites.buffer, x))
-  colnames(x)[colnames(x)=="x"] <- paste(CAbiocube_files[i])
-  x$geometry <- NULL 
-  BioCube_vars <- merge(BioCube_vars, x)
+for (f in CAbiocube_files) {
+  r <- raster(file.path(path_CA, f))
+  for (b in names(bufferPolys)) {
+    BioCube_varsBuffers[[b]][[f]] <- as.numeric(raster::extract(r, bufferPolys[[b]], weights = TRUE,
+                                                                na.rm = TRUE, fun = mean))
+  }
+  message(f, " done")
 }
+rm(r)
 
-# save it
-write_rds(BioCube_vars, "BioCube_vars_20250520.rds")
 
 # tidy variable names ----------------------------------------------------------
 
-# load tidy names
 tidy <- read_csv("tidyNames.csv")
-
-# Create a named vector for renaming
 rename_map <- setNames(tidy$VariableName, tidy$FileName)
 
-# Rename only columns in BioCube that are in tidy$file
-names(BioCube_vars)[names(BioCube_vars) %in% names(rename_map)] <- rename_map[names(BioCube_vars)[names(BioCube_vars) %in% names(rename_map)]]
+BioCube_varsBuffers <- lapply(BioCube_varsBuffers, function(x) {
+  hit <- names(x) %in% names(rename_map)
+  names(x)[hit] <- rename_map[names(x)[hit]]
+  x
+})
 
 
 # merge with detections and foliar traits --------------------------------------
 
-siteDetections_foliarTraits_BioCube <- merge(siteDetections_foliarTraits, BioCube_vars)
+siteDetections_foliarTraits_BioCubeBuffers <- lapply(names(bufferPolys), function(b)
+  merge(siteDetections_foliarTraitsBuffers[[b]],
+        BioCube_varsBuffers[[b]][setdiff(names(BioCube_varsBuffers[[b]]), c("long", "lat"))],
+        by = "cell_unit"))
+names(siteDetections_foliarTraits_BioCubeBuffers) <- names(bufferPolys)
+sapply(siteDetections_foliarTraits_BioCubeBuffers, nrow) # sites for 50, 150, 300 m
+sapply(siteDetections_foliarTraits_BioCubeBuffers, function(x) sum(is.na(st_drop_geometry(x)))) # NA values
 
 
 # save -------------------------------------------------------------------------
 
-write_rds(siteDetections_foliarTraits_BioCube, "siteDetections_foliarTraits_BioCube_20250522.rds")
-write_csv(siteDetections_foliarTraits_BioCube, "siteDetections_foliarTraits_BioCube_20250522.csv")
+for (b in names(bufferPolys)) {
+  write_rds(BioCube_varsBuffers[[b]], paste0("BioCube_vars_buffer", b, "m_20261106.rds"))
+  write_rds(siteDetections_foliarTraits_BioCubeBuffers[[b]],
+            paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261106.rds"))
+  write_csv(st_drop_geometry(siteDetections_foliarTraits_BioCubeBuffers[[b]]),
+            paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261106.csv"))
+}
+
+# TODO 06 Nov 2026: sections 8 onward still use a single table. Until they are
+# converted, they use the 150 m version.
+siteDetections_foliarTraits_BioCube <- siteDetections_foliarTraits_BioCubeBuffers[["150"]]
 
 
 ################################################################################
