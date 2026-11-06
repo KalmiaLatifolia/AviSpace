@@ -30,33 +30,35 @@ library(coda)
 library(mgcv)
 
 # Table of contents ------------------------------------------------------------
-# 1) Processing ARU bioacoustic data  - 63
-# 2) remove burned areas - 179
-# 3) Get foliar traits - 243
-# 4) Get biocube variables - 493
-# 5) add USGS CONUS GAP 2011 landcover type - 558
-# 6) remove species with insufficient data -585
-# 7) which points are too close to each other? - 624
-# 8) make a nice map - 684
-# 9) check for colinearity - 737
-# 9.1) combine species complexes
-# 10) Niche Space PCA - 803
-# 11) PCA loadings (supp figures) - 823
-# 12) render landcover labels - 892
-# 13) test plot for errored species polygons - 975
-# 14) Species Niche Polygons - 1014
-# 15) plot 2 species niche overlap - 1112
-# 16) Calculate all pairwise overlaps - 1240
-# 17) Species niche Areas & Percent overlap - 1284
-# 18) calculate Range overlaps - 1309
-# 19) Range Overlap Maps - 1457
-# 20) Combine range overlaps and niche overlaps - 1562
-# 21) plot range vs niche overlap - 1596
-# 22) Mixed effects model - 1695
-# 23) permutation test - 
-# 23) Figure 2 niche areas - 1701
-# 24) Figure 3 - 1717
-# 25) Species details supp table - 1819
+# 1) Processing ARU bioacoustic data - 74
+# 2) Species complexes and cross-identification - 147
+# 3) Adjust detection rates for day-of-year and year - 244
+# 4) Site buffers - 473
+# 5) Remove burned areas - 500
+# 6) Get foliar traits - 561
+# 7) Get biocube variables - 826
+# 8) add USGS CONUS GAP 2011 landcover type - 893
+# 9) remove species with insufficient data - 920
+# 10) which points are too close to each other? - 967
+# 11) make a nice map - 1027
+# 12) check for colinearity - 1080
+# 13) Niche Space PCA - 1147
+# 14) PCA loadings (supp figures) - 1167
+# 15) render landcover labels - 1236
+# 16) test plot for errored species polygons - 1319
+# 17) Species Niche Polygons - 1358
+# 18) plot 2 species niche overlap - 1457
+# 19) Calculate all pairwise overlaps - 1585
+# 20) Species niche Areas & Percent overlap - 1629
+# 21) calculate Range overlaps - 1655
+# 22) Range Overlap Maps - 1804
+# 23) Combine range overlaps and niche overlaps - 1909
+# 24) plot range vs niche overlap - 1943
+# 25) Mixed effects model - 2035
+# 26) permutation test - 2189
+# 27) Figure 4 niche areas - 2232
+# 28) Figure 5 - matrix - 2248
+# 29) Species details supp table - 2387
 
 
 # working directory  -----------------------------------------------------------
@@ -142,35 +144,8 @@ unit_effort <- effort %>%
 write_rds(unit_effort, "unit_effort.rds")
 
 ################################################################################
-# 1.1) Adjust detection rates for day-of-year and year
+# 2) Species complexes and cross-identification
 ################################################################################
-# 04 Nov 2026 - reviewer request. Recorders were deployed on different dates
-# and in different years, so a raw site average partly reflects when a site
-# was sampled. For each species we fit the seasonal (doy) and annual curve of
-# vocal activity on full 7 h recording days, then rescale each site's
-# observed detections by the activity expected on the days it was sampled.
-#
-# model (per species, one row per site-day):
-#   n_det ~ s(doy) + year + s(cell_unit, bs = "re"),  negative binomial
-# site is a random effect so the curve is not confounded with where sites
-# were sampled early vs late.
-#
-# adjusted rate for site s:
-#   obs_per_day = sum(n_det_s) / sum(g(day_s)) * mean(g(reference days))
-# where g() is the population-level curve (site effect excluded). This is
-# the observed / expected ratio scaled to a common calendar. Sites with zero
-# detections stay at zero. A site sampled on every reference day in every
-# year keeps its raw mean daily count.
-
-# full 7 h recording days ------------------------------------------------------
-
-fullDays <- effort %>%
-  filter(aru_hours == 7) %>%
-  mutate(date = as.Date(date),
-         year = factor(format(date, "%Y")),
-         doy  = as.numeric(format(date, "%j"))) %>%
-  dplyr::select(cell_unit, date, year, doy)
-# nrow(fullDays) should be 66,349
 
 # cross-identification check ---------------------------------------------------
 # 05 Nov 2026. Candidate groups of species whose vocalizations BirdNET may
@@ -265,6 +240,37 @@ complexDet <- complexDet %>%
 # add the complex to the species name table
 commonNames <- bind_rows(commonNames, complexNames)
 
+################################################################################
+# 3) Adjust detection rates for day-of-year and year
+################################################################################
+# 04 Nov 2026 - reviewer request. Recorders were deployed on different dates
+# and in different years, so a raw site average partly reflects when a site
+# was sampled. For each species we fit the seasonal (doy) and annual curve of
+# vocal activity on full 7 h recording days, then rescale each site's
+# observed detections by the activity expected on the days it was sampled.
+#
+# model (per species, one row per site-day):
+#   n_det ~ s(doy) + year + s(cell_unit, bs = "re"),  negative binomial
+# site is a random effect so the curve is not confounded with where sites
+# were sampled early vs late.
+#
+# adjusted rate for site s:
+#   obs_per_day = sum(n_det_s) / sum(g(day_s)) * mean(g(reference days))
+# where g() is the population-level curve (site effect excluded). This is
+# the observed / expected ratio scaled to a common calendar. Sites with zero
+# detections stay at zero. A site sampled on every reference day in every
+# year keeps its raw mean daily count.
+
+# full 7 h recording days ------------------------------------------------------
+
+fullDays <- effort %>%
+  filter(aru_hours == 7) %>%
+  mutate(date = as.Date(date),
+         year = factor(format(date, "%Y")),
+         doy  = as.numeric(format(date, "%j"))) %>%
+  dplyr::select(cell_unit, date, year, doy)
+# nrow(fullDays) should be 66,349
+
 # daily counts per site x species ----------------------------------------------
 # count first (fast on character dates), then parse the much smaller table.
 # all species as detected, plus the de-duplicated complex counts.
@@ -291,7 +297,7 @@ rm(inFull)
 
 
 # which species have enough data to fit a curve? -------------------------------
-# same cut-offs as section 6: > 30 sites and >= 300 detections
+# same cut-offs as section 9: > 30 sites and >= 300 detections
 
 speciesTotals <- dailyCounts %>%
   group_by(species_code) %>%
@@ -367,7 +373,7 @@ phenoRates <- map_dfr(phenoFits, "rates")
 phenoCurves <- map_dfr(phenoFits, "curve")
 phenoInfo <- map_dfr(phenoFits, "info")
 
-# raw rates for species not fitted (too few data; removed later in section 6)
+# raw rates for species not fitted (too few data; removed later in section 9)
 
 rawRates <- dailyCounts %>%
   filter(!species_code %in% phenoRates$species_code) %>%
@@ -413,7 +419,7 @@ ggsave("FigureS_phenologyCurves_20261104.pdf", height = 14, width = 11)
 siteDetections <- merge(siteDetections, commonNames)
 siteDetections <- merge(siteDetections, unit_effort)
 
-# raw detection counts on 7 h days per site x species (used in section 6)
+# raw detection counts on 7 h days per site x species (used in section 9)
 siteCounts <- siteDetections[c("cell_unit", "common_name", "n_detections")]
 siteCounts$species <- make.names(siteCounts$common_name) # matches column names later on
 write_rds(siteCounts, "siteCounts_20261105.rds")
@@ -452,7 +458,7 @@ siteDetections <- subset(siteDetections, siteDetections$active_days > 30) # 5994
 
 # pivot wider ------------------------------------------------------------------
 # [I will want active_days back later]
-# obs_per_day is now the day-of-year and year adjusted rate from section 1.1
+# obs_per_day is now the day-of-year and year adjusted rate from section 3
 # (unadjusted rate kept in obs_per_day_raw)
 siteDetections <- siteDetections[c("cell_unit", "common_name", "obs_per_day", "long", "lat")]
 siteDetections <- siteDetections %>%
@@ -464,50 +470,99 @@ siteDetections[is.na(siteDetections)] <- 0
 
 
 ################################################################################
-# 2) remove burned areas
+# 4) Site buffers
+################################################################################
+# 06 Nov 2026. Habitat variables and fire are summarized within a buffer around
+# each ARU. 150 m is the main analysis (about 9 ha, the average home range of a
+# small passerine). 50 m and 300 m versions are made for the buffer
+# sensitivity test (reviewer request). From here on, each step is run on all
+# three versions.
+# Each site also carries the date of its last full recording day, used in
+# section 5 so that a fire only counts if it started before that day.
+
+ARUlocations.sf <- st_as_sf(ARUlocations, coords = c("long", "lat"), crs = 4326, remove = FALSE)
+ARUlocations.sf <- merge(ARUlocations.sf,
+                         data.frame(cell_unit = unit_effort$cell_unit,
+                                    endDate = as.Date(unit_effort$endDate)),
+                         by = "cell_unit")
+
+bufferSizes <- c(50, 150, 300) # m
+siteBuffers <- lapply(setNames(bufferSizes, bufferSizes),
+                      function(b) st_buffer(st_transform(ARUlocations.sf, 3310), dist = b))
+# California Albers (EPSG 3310), so buffer distances are in meters
+
+mapview(siteBuffers[["300"]], col.regions = "red") +
+  mapview(siteBuffers[["150"]]) +
+  mapview(siteBuffers[["50"]], col.regions = "yellow")
+
+
+################################################################################
+# 5) Remove burned areas
 ################################################################################
 
 
-# get burn years ---------------------------------------------------------------
-
-# load fire data 2024
-# fire data comes from https://gis.data.ca.gov/datasets/CALFIRE-Forestry::california-fire-perimeters-all/explore 
+# get fire perimeters ----------------------------------------------------------
+# CAL FIRE, California Fire Perimeters (all), downloaded 2024
+# https://gis.data.ca.gov/datasets/CALFIRE-Forestry::california-fire-perimeters-all/explore
 fire <- read_sf(dsn = file.path(base_dir, "Fire perimeters/California_Fire_Perimeters_2024")) # 22,261 fires
 # 1898-04-01 til 2023-12-22
-mapview(fire)
-names(fire)[names(fire) == 'YEAR_'] <- 'burnYear'
-fire <- fire[c("burnYear", "geometry")]
-fire$burnYear <- as.numeric(fire$burnYear)
 
-# only keep fires 2018-2023
-recentFires <- subset(fire, fire$burnYear >= 2018)
-mapview(ARUlocations.sf) + mapview(recentFires)
+# keep fires that started after the 2018 hyperspectral imagery (21-22 June 2018)
+# 6 recent fires have no ALARM_DATE; for these use 21 June of YEAR_ (conservative)
+fire <- fire %>%
+  mutate(fireDate = as.Date(ALARM_DATE),
+         fireDate = if_else(is.na(fireDate) & !is.na(YEAR_),
+                            as.Date(paste0(YEAR_, "-06-21")), fireDate)) %>%
+  filter(!is.na(fireDate), fireDate >= as.Date("2018-06-21")) %>%
+  dplyr::select(fireDate)
+fire <- st_make_valid(st_transform(fire, 3310)) # California Albers, meters
+# 2,091 fires
 
-# get all the years when ARU locations burned
-sf_use_s2(FALSE)
-ARUlocations.sf <- st_as_sf(ARUlocations, coords = c("long", "lat"), crs=4326, remove=FALSE)
-fire <- st_transform(fire, crs = crs(ARUlocations.sf))
-firePoints <- st_join(ARUlocations.sf, fire, multiple="all") # 2645 obs/burns (thats more than one burn per site)
-mapview(firePoints, zcol="burnYear")
-sf_use_s2(TRUE)
+# burned sites for each buffer size --------------------------------------------
+# a site burned if any part of its buffer burned between the imagery and the
+# site's last full recording day. burnYear = year of the most recent such fire.
 
-# keep only the most recent burn for each point
-burnYear <- firePoints %>%
-  group_by(cell_unit) %>% 
-  slice_max(burnYear) %>% 
-  ungroup() # 902
-burnYear <- burnYear %>% distinct(cell_unit, .keep_all = TRUE) # 901 obs
+burnedSites <- lapply(siteBuffers, function(buf) {
+  st_join(buf[c("cell_unit", "endDate")], fire, left = FALSE) %>%
+    st_drop_geometry() %>%
+    filter(fireDate <= endDate) %>%
+    group_by(cell_unit) %>%
+    dplyr::summarise(burnYear = max(as.numeric(format(fireDate, "%Y"))))
+})
+sapply(burnedSites, nrow) # number of burned sites for 50, 150 and 300 m buffers
 
-rm(fire, firePoints)
+mapview(siteBuffers[["150"]]) + mapview(fire)
+
+# three versions of siteDetections, one per buffer size ------------------------
+# each version drops the sites that burned within its own buffer
+
+siteDetectionsBuffers <- lapply(names(siteBuffers), function(b) {
+  sitePoints <- merge(ARUlocations.sf["cell_unit"], burnedSites[[b]],
+                      by = "cell_unit", all.x = TRUE)
+  x <- merge(sitePoints, siteDetections, by = "cell_unit")
+  # keep the original column order (cell_unit, long, lat, burnYear, species...)
+  x <- x[c("cell_unit", "long", "lat", "burnYear",
+           setdiff(names(x), c("cell_unit", "long", "lat", "burnYear", "geometry")))]
+  subset(x, is.na(x$burnYear))
+})
+names(siteDetectionsBuffers) <- names(siteBuffers)
+sapply(siteDetectionsBuffers, nrow) # sites remaining for 50, 150 and 300 m buffers
+# 50m 659 sites
+# 150m 644 sites
+# 300m 627 sites
+
+# save -------------------------------------------------------------------------
+
+for (b in names(siteDetectionsBuffers)) {
+  write_csv(siteDetectionsBuffers[[b]], paste0("siteDetections_buffer", b, "m_20261106.csv"))
+}
 
 
-# add burn year to siteDetections ----------------------------------------------
 
-siteDetections <- merge(burnYear, siteDetections) # 889 obs, 106 vars
 
-# remove points that burned ----------------------------------------------------
-
-siteDetections <- subset(siteDetections, is.na(siteDetections$burnYear) | siteDetections$burnYear < 2018) # 649 obs
+################################################################################
+# 6) Get foliar traits
+################################################################################
 
 # get tahoe and yosemite boxes -------------------------------------------------
 
@@ -517,24 +572,17 @@ mapview(tahoe) +
   mapview(yosemite)
 
 # exclude ARUs not in boxes ----------------------------------------------------
-mapview(siteDetections) + mapview(tahoe) + mapview(yosemite)
+mapview(siteDetectionsBuffers[["150"]]) + mapview(tahoe) + mapview(yosemite)
 # not necessary
 
-# save siteDetections ----------------------------------------------------------
-
-write_csv(siteDetections, "siteDetections_20250501.csv")
-
-
-
-
-################################################################################
-# 3) Get foliar traits
-################################################################################
 
 
 # buffer site locations
-sites.buffer <- st_buffer(siteDetections, dist = 150) # 649
-# a 150 m radius buffer = about 9 hectares, avg home range size of small passerines
+# TODO 06 Nov 2026: run this section on all three buffer versions
+# (siteBuffers and siteDetectionsBuffers, sections 4-5). For now it uses 150 m.
+sites.buffer <- siteBuffers[["150"]] %>%
+  filter(cell_unit %in% siteDetectionsBuffers[["150"]]$cell_unit) %>%
+  st_transform(4326)
 sites.buffer <- sites.buffer[c("cell_unit", "long", "lat")]
 
 # Nitrogen
@@ -763,7 +811,7 @@ write_csv(x, "foliarTraits_20250502.csv")
 
 foliarTraits <- as.data.frame(foliarTraits)
 foliarTraits$geometry <- NULL 
-siteDetections_foliarTraits <- merge(siteDetections, foliarTraits)
+siteDetections_foliarTraits <- merge(siteDetectionsBuffers[["150"]], foliarTraits) # TODO all three buffers
 
 # subset to remove NA rows -----------------------------------------------------
 
@@ -778,14 +826,16 @@ write_csv(x, "siteDetections_foliarTraits_20250502.csv")
 
 
 ################################################################################
-# 4) Get biocube variables
+# 7) Get biocube variables
 ################################################################################
 
 # update buffer -----------------------------------------------------------------
 
 # buffer site locations
-sites.buffer <- st_buffer(siteDetections_foliarTraits, dist = 150) # 580
-# a 150 m radius buffer = about 9 hectares, avg home range size of small passerines
+# TODO 06 Nov 2026: run on all three buffer versions. For now it uses 150 m.
+sites.buffer <- siteBuffers[["150"]] %>%
+  filter(cell_unit %in% siteDetections_foliarTraits$cell_unit) %>%
+  st_transform(4326)
 sites.buffer <- sites.buffer[c("cell_unit", "long", "lat")]
 
 
@@ -843,7 +893,7 @@ write_csv(siteDetections_foliarTraits_BioCube, "siteDetections_foliarTraits_BioC
 
 
 ################################################################################
-# 5) add USGS CONUS GAP 2011 landcover type
+# 8) add USGS CONUS GAP 2011 landcover type
 ################################################################################
 
 # load data
@@ -870,7 +920,7 @@ siteDetections_foliarTraits_BioCube$landcover_ID <- NULL
 
 
 ################################################################################
-#  6) remove species with insufficient data
+# 9) remove species with insufficient data
 ################################################################################
 
 # at how many sites is each species detected? ----------------------------------
@@ -890,7 +940,7 @@ siteDetections_foliarTraits_BioCube$Yellow.breasted.Chat <- NULL
 
 # how many times in total was a species detected? ------------------------------
 
-# 05 Nov 2026. Use the raw counts on 7 h days (siteCounts, section 1.1) at the
+# 05 Nov 2026. Use the raw counts on 7 h days (siteCounts, section 3) at the
 # sites retained here. obs_per_day x active_days is no longer a count because
 # obs_per_day is now adjusted for day of year and year.
 # siteCounts <- readRDS("siteCounts_20261105.rds")
@@ -917,7 +967,7 @@ write_csv(siteDetections_foliarTraits_BioCube, "siteDetections_foliarTraits_BioC
 # 580 obs, 207 var
 
 ################################################################################
-#  7) which points are too close to each other?
+# 10) which points are too close to each other?
 ################################################################################
 
 # Compute full distance matrix
@@ -977,7 +1027,7 @@ avg_distances <- sites_sf %>%
 mean(avg_distances$avg_dist, na.rm=TRUE) #1206 meters
 
 ################################################################################
-#  8) make a nice map
+# 11) make a nice map
 ################################################################################
 
 # update sites
@@ -1030,7 +1080,7 @@ ggplot() +
 ggsave("point_map.pdf", height=7, width=5)
 
 ################################################################################
-# 9) check for colinearity
+# 12) check for colinearity
 ################################################################################
 
 # 90% cutoff
@@ -1097,18 +1147,7 @@ siteDetections_foliarTraits_BioCube <- readRDS("siteDetections_foliarTraits_BioC
 
 
 ################################################################################
-# 9.1) Combine species complexes
-################################################################################
-# 4th Nov 2026
-# Need to combine species complexes with risk of co-detection
-# Cassins + Plumbeous Vireo = Solitary Vireo
-#
-
-
-
-
-################################################################################
-# 10) Niche Space PCA
+# 13) Niche Space PCA
 ################################################################################
 
 # convert to count data --------------------------------------------------------
@@ -1128,7 +1167,7 @@ roundedPCA <- cbind(roundedCounts, traitsPCA$x)
 
 
 ################################################################################
-# 11) PCA loadings (supp figures)
+# 14) PCA loadings (supp figures)
 ################################################################################
 
 
@@ -1197,7 +1236,7 @@ fviz_contrib(traitsPCA, choice="var", axes = 2, sort.val ="asc") +
   ylab("Habitat")
 
 ################################################################################
-# 12) render landcover labels
+# 15) render landcover labels
 ################################################################################
 
 # the plot
@@ -1280,7 +1319,7 @@ landcover_centroids$Groups[landcover_centroids$Groups == "California Montane Jef
 landcover_centroids$Groups[landcover_centroids$Groups == "Sierra Nevada Subalpine Lodgepole Pine Forest and Woodland"] <- "Subalpine Lodgepole Pine Forest and Woodland"
 
 ################################################################################
-# 13) test plot for errored species polygons
+# 16) test plot for errored species polygons
 ################################################################################
 
 # some species weren't plotting correctly because not enough points
@@ -1319,7 +1358,7 @@ ggplot(roundedPCA, aes(x=PC1, y=PC2, color=get(species1))) + geom_point() + scal
 ggplot(uncounted_data1, aes(x=PC1, y=PC2)) + geom_point(alpha=0.05)
 
 ################################################################################
-# 14) Species Niche Polygons
+# 17) Species Niche Polygons
 ################################################################################
 
 
@@ -1418,7 +1457,7 @@ write_rds(speciesPolygons, "speciesPolygons_jittered_detPerDay_20250624.rds")
 
 
 ################################################################################
-# 15) plot 2 species niche overlap
+# 18) plot 2 species niche overlap
 ################################################################################
 
 # pick my favorite eigenvectors ------------------------------------------------
@@ -1546,7 +1585,7 @@ fviz_pca_ind(traitsPCA,
 ggsave("OverlapPoly_YRWarb_RBNut.pdf", height=5, width=7)
 
 ################################################################################
-# 16) Calculate all pairwise overlaps
+# 19) Calculate all pairwise overlaps
 ################################################################################
 
 # define species combinations --------------------------------------------------
@@ -1590,7 +1629,7 @@ write.csv(pairwise_combinations, "speciesNicheOverlapAreas_jittered_detPerWeek_2
 
 
 ################################################################################
-# 17) Species niche Areas & Percent overlap
+# 20) Species niche Areas & Percent overlap
 ################################################################################
 
 # species areas
@@ -1616,7 +1655,7 @@ write_rds(percentOverlap, "percentOverlap_20250624.rds")
 
 
 ################################################################################
-# 18) calculate Range overlaps
+# 21) calculate Range overlaps
 ################################################################################
 
 
@@ -1765,7 +1804,7 @@ write_rds(rangeOverlapsDot, "rangeOverlaps_dotNames_20250624.rds")
 rangeOverlaps <- readRDS("rangeOverlaps_dotNames_20250623.rds")
 
 ################################################################################
-# 19) Range Overlap Maps
+# 22) Range Overlap Maps
 ################################################################################
 
 
@@ -1870,7 +1909,7 @@ ggplot() +
 ggsave("RangeOverlap_OakTit_RNSap.pdf", height=7, width=7)
 
 ################################################################################
-# 20) Combine range overlaps and niche overlaps
+# 23) Combine range overlaps and niche overlaps
 ################################################################################
 
 # ensure column names are informative ------------------------------------------
@@ -1904,7 +1943,7 @@ merge2 <- merge(NicheOverlap, rangeOverlaps, by.x = c("species1", "species2"), b
 NicheRangeOverlap <- rbind(merge1, merge2)
 
 ################################################################################
-# 21) plot range vs niche overlap
+# 24) plot range vs niche overlap
 ################################################################################
 
 # mark congeneric pairs --------------------------------------------------------
@@ -1996,7 +2035,7 @@ ggsave("NicheRangeOverlap_points_20260706.pdf", height=5, width=7)
 
 
 ################################################################################
-# 22) Mixed effects model
+# 25) Mixed effects model
 ################################################################################
 
 # Mixed effects model - accounts for species non-independence (the same species appear in multiple pairs)
@@ -2150,7 +2189,7 @@ ggplot(subset(NicheRangeOverlapDot, NicheRangeOverlapDot$congeneric=="Same Genus
   ylab("Range Overlap (%)")
 
 ################################################################################
-# 23) permutation test
+# 26) permutation test
 ################################################################################
 
 # ---- 1. Species -> genus map, straight from the genus columns ----
@@ -2193,7 +2232,7 @@ hist(null, breaks = 40, main = "Permutation null: slope difference",
 
 
 ################################################################################
-# 23) Figure 4 niche areas 
+# 27) Figure 4 niche areas 
 ################################################################################
 
 ggplot(NicheAreas, aes(x = reorder(species, area), y = area)) +
@@ -2209,7 +2248,7 @@ ggplot(NicheAreas, aes(x = reorder(species, area), y = area)) +
 ggsave("NicheAreas_20250709.pdf", height=12, width=7)
 
 ################################################################################
-# 24) Figure 5 - matrix
+# 28) Figure 5 - matrix
 ################################################################################
 
 # Heirarchical Matrix
@@ -2348,7 +2387,7 @@ combined_plot
 ggsave("Figure5_matrix_sup.PDF", height=8, width=9)
 
 ################################################################################
-# 25) Species details supp table
+# 29) Species details supp table
 ################################################################################
 
 # niche area
