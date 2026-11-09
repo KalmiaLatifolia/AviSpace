@@ -33,32 +33,32 @@ library(mgcv)
 # 1) Processing ARU bioacoustic data - 74
 # 2) Species complexes and cross-identification - 147
 # 3) Adjust detection rates for day-of-year and year - 244
-# 4) Site buffers - 473
-# 5) Remove burned areas - 500
-# 6) Get foliar traits - 567
-# 7) Get biocube variables - 656
-# 8) add USGS CONUS GAP 2011 landcover type - 732
-# 9) remove species with insufficient data - 759
-# 10) which points are too close to each other? - 806
-# 11) make a nice map - 866
-# 12) check for colinearity - 919
-# 13) Niche Space PCA - 986
-# 14) PCA loadings (supp figures) - 1006
-# 15) render landcover labels - 1075
-# 16) test plot for errored species polygons - 1158
-# 17) Species Niche Polygons - 1197
-# 18) plot 2 species niche overlap - 1296
-# 19) Calculate all pairwise overlaps - 1424
-# 20) Species niche Areas & Percent overlap - 1468
-# 21) calculate Range overlaps - 1494
-# 22) Range Overlap Maps - 1643
-# 23) Combine range overlaps and niche overlaps - 1748
-# 24) plot range vs niche overlap - 1782
-# 25) Mixed effects model - 1874
-# 26) permutation test - 2028
-# 27) Figure 4 niche areas - 2071
-# 28) Figure 5 - matrix - 2087
-# 29) Species details supp table - 2226
+# 4) Site buffers - 474
+# 5) Remove burned areas - 501
+# 6) Get foliar traits - 568
+# 7) Get biocube variables - 657
+# 8) add USGS CONUS GAP 2011 landcover type - 736
+# 9) which points are too close to each other? - 768
+# 10) remove species with insufficient data - 838
+# 11) make a nice map - 890
+# 12) check for colinearity - 928
+# 13) Niche Space PCA - 1026
+# 14) PCA loadings (supp figures) - 1046
+# 15) render landcover labels - 1115
+# 16) test plot for errored species polygons - 1198
+# 17) Species Niche Polygons - 1237
+# 18) plot 2 species niche overlap - 1336
+# 19) Calculate all pairwise overlaps - 1464
+# 20) Species niche Areas & Percent overlap - 1508
+# 21) calculate Range overlaps - 1534
+# 22) Range Overlap Maps - 1683
+# 23) Combine range overlaps and niche overlaps - 1788
+# 24) plot range vs niche overlap - 1822
+# 25) Mixed effects model - 1914
+# 26) permutation test - 2068
+# 27) Figure 4 niche areas - 2111
+# 28) Figure 5 - matrix - 2127
+# 29) Species details supp table - 2266
 
 
 # working directory  -----------------------------------------------------------
@@ -297,7 +297,8 @@ rm(inFull)
 
 
 # which species have enough data to fit a curve? -------------------------------
-# same cut-offs as section 9: > 30 sites and >= 300 detections
+# fit cut-offs: > 30 sites and >= 300 detections. Section 10 uses the same
+# cut-offs on the final site set of each buffer version.
 
 speciesTotals <- dailyCounts %>%
   group_by(species_code) %>%
@@ -373,7 +374,7 @@ phenoRates <- map_dfr(phenoFits, "rates")
 phenoCurves <- map_dfr(phenoFits, "curve")
 phenoInfo <- map_dfr(phenoFits, "info")
 
-# raw rates for species not fitted (too few data; removed later in section 9)
+# raw rates for species not fitted (too few data; removed later in section 10)
 
 rawRates <- dailyCounts %>%
   filter(!species_code %in% phenoRates$species_code) %>%
@@ -419,7 +420,7 @@ ggsave("FigureS_phenologyCurves_20261104.pdf", height = 14, width = 11)
 siteDetections <- merge(siteDetections, commonNames)
 siteDetections <- merge(siteDetections, unit_effort)
 
-# raw detection counts on 7 h days per site x species (used in section 9)
+# raw detection counts on 7 h days per site x species (used in section 10)
 siteCounts <- siteDetections[c("cell_unit", "common_name", "n_detections")]
 siteCounts$species <- make.names(siteCounts$common_name) # matches column names later on
 write_rds(siteCounts, "siteCounts_20261105.rds")
@@ -689,6 +690,12 @@ for (f in CAbiocube_files) {
 }
 rm(r)
 
+# save the raw extraction right away (slow step; original file names as columns).
+# To skip the extraction on a rerun, load this instead of running the loop above:
+# BioCube_varsBuffers <- readRDS("BioCube_varsBuffers_raw_20261109.rds")
+write_rds(BioCube_varsBuffers, "BioCube_varsBuffers_raw_20261109.rds")
+
+# RUNNING LEFT OFF HERE ######
 
 # tidy variable names ----------------------------------------------------------
 
@@ -723,14 +730,12 @@ for (b in names(bufferPolys)) {
             paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261106.csv"))
 }
 
-# TODO 06 Nov 2026: sections 8 onward still use a single table. Until they are
-# converted, they use the 150 m version.
-siteDetections_foliarTraits_BioCube <- siteDetections_foliarTraits_BioCubeBuffers[["150"]]
 
 
 ################################################################################
 # 8) add USGS CONUS GAP 2011 landcover type
 ################################################################################
+# landcover type at each ARU location (point value), added to each buffer version
 
 # load data
 YosemiteGAP <- raster(file.path(base_dir, "Yosemite_GAP_2011.tif"))
@@ -741,126 +746,145 @@ x <- list(YosemiteGAP, TahoeGAP)
 GAP <- do.call(merge, x)
 mapview(GAP)
 
-# site locations
-sites <- siteDetections_foliarTraits_BioCube[c("cell_unit", "long", "lat")]
-
-# extract
-landcover_ID <- raster::extract(GAP$layer, sites, na.rm=TRUE)
-siteDetections_foliarTraits_BioCube <- as.data.frame(cbind(siteDetections_foliarTraits_BioCube, landcover_ID))
-
-# add key names
+# key names
 coverNames <- read.csv(file.path(base_dir, "USGS_CONUS_GAP_2011_key.csv"))
 coverNames <- coverNames[c("landcover_ID", "landcover_type")]
-siteDetections_foliarTraits_BioCube <- merge(siteDetections_foliarTraits_BioCube, coverNames)
-siteDetections_foliarTraits_BioCube$landcover_ID <- NULL
 
+# extract and add key names
+siteDetections_foliarTraits_BioCubeBuffers <- lapply(siteDetections_foliarTraits_BioCubeBuffers, function(x) {
+  sites <- x[c("cell_unit", "long", "lat")]
+  x <- as.data.frame(x)
+  x$landcover_ID <- raster::extract(GAP$layer, sites, na.rm = TRUE)
+  x <- merge(x, coverNames, by = "landcover_ID")
+  x$landcover_ID <- NULL
+  x
+})
+sapply(siteDetections_foliarTraits_BioCubeBuffers, nrow) # sites with a landcover type, 50, 150, 300 m
+# 584 obs 50m
+# 578 obs 150m
+# 570 obs 300m
 
 ################################################################################
-# 9) remove species with insufficient data
+# 9) which points are too close to each other?
 ################################################################################
+# 06 Nov 2026. Automated, run separately for each buffer version.
+# When two sites are < 500 m apart, one is dropped: the site with more missing
+# values across variables, or if tied, the site with fewer full recording days.
+# Pairs are handled from closest to farthest, so a site is not dropped for a
+# neighbour that has already been dropped.
+# (Manual choice before, 150 m: dropped C5196_U1, C3824_U2, C6940_U2.)
 
-# at how many sites is each species detected? ----------------------------------
-x <- siteDetections_foliarTraits_BioCube[,c(5:96)]
-x <- sort(colSums(x != 0))
-speciesSites <- data.frame(species = names(x), totalSites = as.numeric(x))
+drop_close_sites <- function(x, min_dist = 500) {
+  pts <- st_as_sf(x[c("cell_unit", "long", "lat")], coords = c("long", "lat"), crs = 4326)
+  d <- st_distance(pts)
+  units(d) <- NULL
+  idx <- which(d < min_dist & upper.tri(d), arr.ind = TRUE)
+  if (nrow(idx) == 0) return(list(x = x, pairs = NULL))
+  pairs <- data.frame(site1 = x$cell_unit[idx[, 1]], site2 = x$cell_unit[idx[, 2]],
+                      dist_m = round(d[idx]))
+  pairs <- pairs[order(pairs$dist_m), ]
+  info <- data.frame(cell_unit = x$cell_unit,
+                     nMissing = rowSums(is.na(x[setdiff(names(x), "geometry")])),
+                     active_days = unit_effort$active_days[match(x$cell_unit, unit_effort$cell_unit)])
+  pairs$dropped <- NA_character_
+  dropped <- character(0)
+  for (i in seq_len(nrow(pairs))) {
+    a <- info[info$cell_unit == pairs$site1[i], ]
+    b <- info[info$cell_unit == pairs$site2[i], ]
+    if (a$cell_unit %in% dropped || b$cell_unit %in% dropped) next
+    dropA <- if (a$nMissing != b$nMissing) a$nMissing > b$nMissing else a$active_days < b$active_days
+    pairs$dropped[i] <- if (dropA) a$cell_unit else b$cell_unit
+    dropped <- c(dropped, pairs$dropped[i])
+  }
+  list(x = x[!x$cell_unit %in% dropped, ], pairs = pairs)
+}
 
-# remove columns for species <= 30
-siteDetections_foliarTraits_BioCube$Tree.Swallow <- NULL
-siteDetections_foliarTraits_BioCube$California.Thrasher <- NULL
-siteDetections_foliarTraits_BioCube$Song.Sparrow <- NULL
-siteDetections_foliarTraits_BioCube$Wild.Turkey <- NULL
-siteDetections_foliarTraits_BioCube$Brown.headed.Cowbird <- NULL
-siteDetections_foliarTraits_BioCube$Vaux.s.Swift <- NULL
-siteDetections_foliarTraits_BioCube$Yellow.breasted.Chat <- NULL
+closeSites <- lapply(siteDetections_foliarTraits_BioCubeBuffers, drop_close_sites)
+lapply(closeSites, `[[`, "pairs") # pairs < 500 m apart and the site dropped from each
+siteDetections_foliarTraits_BioCubeBuffers <- lapply(closeSites, `[[`, "x")
+sapply(siteDetections_foliarTraits_BioCubeBuffers, nrow) # sites kept, 50, 150, 300 m
+# 581 obs 50m
+# 575 obs 150m
+# 567 obs 300m
 
+# how many unique cells? --------------------------------------------------------
+sapply(siteDetections_foliarTraits_BioCubeBuffers,
+       function(x) length(unique(str_extract(x$cell_unit, ".*(?=_)")))) # 285 before (150 m)
+# 289 obs 50m
+# 285 obs 150m
+# 279 obs 300m
 
-# how many times in total was a species detected? ------------------------------
+# average distance between ARUs in the same cell? ------------------------------
+# California Albers (EPSG 3310) so distances are true meters
+# (the earlier version used Web Mercator, EPSG 3857, which overstates
+# distances at this latitude by about 27%)
+avg_cell_distance <- function(x) {
+  s <- st_as_sf(x[c("cell_unit", "long", "lat")], coords = c("long", "lat"), crs = 4326) %>%
+    st_transform(3310) %>%
+    mutate(cell = str_extract(cell_unit, ".*(?=_)"))
+  d <- sapply(split(s, s$cell), function(g) {
+    if (nrow(g) < 2) return(NA_real_)
+    m <- as.numeric(st_distance(g))
+    mean(m[lower.tri(matrix(NA, nrow(g), nrow(g)))])
+  })
+  mean(d, na.rm = TRUE)
+}
+sapply(siteDetections_foliarTraits_BioCubeBuffers, avg_cell_distance) # meters (1206 before, Web Mercator)
+# 951m 50m
+# 950m 150m
+# 948m 300m
 
-# 05 Nov 2026. Use the raw counts on 7 h days (siteCounts, section 3) at the
-# sites retained here. obs_per_day x active_days is no longer a count because
-# obs_per_day is now adjusted for day of year and year.
-# siteCounts <- readRDS("siteCounts_20261105.rds")
-spCols <- intersect(names(siteDetections_foliarTraits_BioCube), unique(siteCounts$species))
-speciesDetections <- siteCounts %>%
-  filter(cell_unit %in% siteDetections_foliarTraits_BioCube$cell_unit,
-         species %in% spCols) %>%
-  group_by(species) %>%
-  dplyr::summarise(totalDetections = sum(n_detections)) %>%
-  arrange(totalDetections) %>%
-  as.data.frame()
+################################################################################
+# 10) remove species with insufficient data
+################################################################################
+# 06 Nov 2026. Automated, run separately for each buffer version.
+# Remove species detected at 30 or fewer sites or with fewer than 300 total detections
+# (same cut-offs as the curve fitting in section 3)
+# (raw counts on 7 h days, siteCounts from section 3, at the sites in each version).
 
-# remove species with < 300 detections
-siteDetections_foliarTraits_BioCube$Brewer.s.Sparrow <- NULL
-siteDetections_foliarTraits_BioCube$Sooty.Grouse <- NULL
+count_species <- function(x) {
+  spCols <- intersect(names(x), unique(siteCounts$common_name))
+  dets <- siteCounts %>%
+    filter(cell_unit %in% x$cell_unit, common_name %in% spCols) %>%
+    group_by(common_name) %>%
+    dplyr::summarise(totalDetections = sum(n_detections))
+  out <- data.frame(common_name = spCols, totalSites = colSums(x[spCols] != 0))
+  out <- merge(out, dets, by = "common_name", all.x = TRUE)
+  out$totalDetections[is.na(out$totalDetections)] <- 0
+  out$keep <- out$totalSites > 30 & out$totalDetections >= 300
+  out[order(out$totalSites), ]
+}
 
-# 92 species
+speciesCounts <- lapply(siteDetections_foliarTraits_BioCubeBuffers, count_species)
+lapply(speciesCounts, function(s) s[!s$keep, ]) # species removed from each version
+sapply(speciesCounts, function(s) sum(s$keep)) # species kept, 50, 150, 300 m
+# all buffer sizes removed: California Thrasher, Tree Swallow, Song Sparrow, 
+# Wild Turkey, Brown-headed Cowbird, Vaux's Swift, Yellow-breasted Chat, 
+# Brewer's Sparrow, Lawrence's Goldfinch, Sooty Grouse
+# all buffer sizes kept 92 species
+
+siteDetections_foliarTraits_BioCubeBuffers <- lapply(names(speciesCounts), function(b) {
+  drop <- speciesCounts[[b]]$common_name[!speciesCounts[[b]]$keep]
+  siteDetections_foliarTraits_BioCubeBuffers[[b]][setdiff(names(siteDetections_foliarTraits_BioCubeBuffers[[b]]), drop)]
+})
+names(siteDetections_foliarTraits_BioCubeBuffers) <- names(speciesCounts)
 
 # save -------------------------------------------------------------------------
 
-write_rds(siteDetections_foliarTraits_BioCube, "siteDetections_foliarTraits_BioCube_20250522.rds")
-write_csv(siteDetections_foliarTraits_BioCube, "siteDetections_foliarTraits_BioCube_20250522.csv")
+for (b in names(siteDetections_foliarTraits_BioCubeBuffers)) {
+  write_csv(speciesCounts[[b]], paste0("speciesCounts_buffer", b, "m_20261106.csv"))
+  write_rds(siteDetections_foliarTraits_BioCubeBuffers[[b]],
+            paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261106.rds"))
+  x <- siteDetections_foliarTraits_BioCubeBuffers[[b]]
+  x$geometry <- NULL
+  write_csv(x, paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261106.csv"))
+}
 
-# 580 obs, 207 var
+# 150 m version, used for the site map in section 11
+siteDetections_foliarTraits_BioCube <- siteDetections_foliarTraits_BioCubeBuffers[["150"]]
+speciesSites <- speciesCounts[["150"]][c("common_name", "totalSites")]
+speciesDetections <- speciesCounts[["150"]][c("common_name", "totalDetections")]
 
-################################################################################
-# 10) which points are too close to each other?
-################################################################################
-
-# Compute full distance matrix
-dists <- st_distance(sites)
-# Replace self-distances with NA (or Inf)
-diag(dists) <- NA
-# Find the minimum distance to another point for each point
-min_dists <- apply(dists, 1, min, na.rm = TRUE)
-sites$min_dist <- min_dists
-
-# add back effort
-x <- merge(sites, unit_effort)
-
-# Too close = less than 500 m apart
-
-# pick which too-close sites are better to exclude
-# C5196_U1 & C5196_U2. remove U1.
-# C3824_U1 & C3824_U2. remove U2.
-# C6940_U1 & C6940_U2. remove U2.
-
-# remove them
-siteDetections_foliarTraits_BioCube <- siteDetections_foliarTraits_BioCube[siteDetections_foliarTraits_BioCube$cell_unit != "C5196_U1", ]
-siteDetections_foliarTraits_BioCube <- siteDetections_foliarTraits_BioCube[siteDetections_foliarTraits_BioCube$cell_unit != "C3824_U2", ]
-siteDetections_foliarTraits_BioCube <- siteDetections_foliarTraits_BioCube[siteDetections_foliarTraits_BioCube$cell_unit != "C6940_U2", ]
-
-# 577 obs, 207 var
-
-# save updated version
-
-write_rds(siteDetections_foliarTraits_BioCube, "siteDetections_foliarTraits_BioCube_20250522.rds")
-write_csv(siteDetections_foliarTraits_BioCube, "siteDetections_foliarTraits_BioCube_20250522.csv")
-
-# how many unique cell units? --------------------------------------------------
-unique(str_extract(siteDetections_foliarTraits_BioCube$cell_unit, ".*(?=_)"))
-length(unique(str_extract(siteDetections_foliarTraits_BioCube$cell_unit, ".*(?=_)"))) # 285
-
-# average distance between ARUs in the same cell? ------------------------------
-sites <- siteDetections_foliarTraits_BioCube[c("cell_unit", "long", "lat")]
-sites$cell <- str_extract(sites$cell_unit, ".*(?=_)")
-sites_sf <- st_as_sf(sites, coords = c("long", "lat"), crs = 4326) # Use WGS84
-sites_sf <- st_transform(sites_sf, 3857)
-avg_distances <- sites_sf %>%
-  group_by(cell) %>%
-  summarise(count= n(),
-            avg_dist = {
-    geom <- geometry
-    if (n() < 2) {
-      NA_real_  # Not enough points to calculate distance
-    } else {
-      dists <- st_distance(geom)
-      dists <- as.numeric(dists)
-      # Remove self-distances and duplicates
-      dists <- dists[lower.tri(matrix(NA, n(), n()))]
-      mean(dists, na.rm = TRUE)
-    }
-  })
-mean(avg_distances$avg_dist, na.rm=TRUE) #1206 meters
 
 ################################################################################
 # 11) make a nice map
@@ -883,22 +907,7 @@ sites_3857 <- st_transform(sites, 3857)
 # set default basemap settings
 basemaps::set_defaults(ext = ext_3857)
 
-#plot it
-ggplot() +
-  basemap_gglayer(ext_3857, map_service = "esri", map_type = "world_dark_gray_base") +
-  scale_fill_identity() + 
-  geom_sf(data = sites_3857, color = "navy", size = 1, show.legend = FALSE, alpha=0.5) +
-  annotation_scale(location = "bl", width_hint = 0.2) +
-  annotation_north_arrow(location = "tl", which_north = "true",
-                         style = north_arrow_fancy_orienteering) +
-  coord_sf(xlim = st_bbox(ext_3857)[c("xmin", "xmax")],
-           ylim = st_bbox(ext_3857)[c("ymin", "ymax")],
-           expand = FALSE) +
-  theme(legend.position = "none") +
-  xlab("") +
-  ylab("")
-
-
+# plot it (Figure 2A)
 ggplot() +
   basemap_gglayer(ext_3857, map_service = "esri", map_type = "world_physical_map") +
   scale_fill_identity() + 
@@ -918,69 +927,112 @@ ggsave("point_map.pdf", height=7, width=5)
 ################################################################################
 # 12) check for colinearity
 ################################################################################
+# 06 Nov 2026. Variables are selected by name (all foliar traits and all BioCube
+# layers). Correlations are checked on the 150 m version, where the choices of
+# which variable to keep were made; the same removal list is then applied to
+# all three buffer versions so the PCA uses identical variables.
 
-# 90% cutoff
+# A 0.95 threshold only loses us two foliar traits. A 0.9 threshold would lose more.
 
-cor_matrix <- cor(siteDetections_foliarTraits_BioCube[,97:182], use = "complete.obs")
-corrplot(cor_matrix,
-         method = "color",
-         order = "hclust",         
-         hclust.method = "complete", 
-         addrect = 3,             
-         tl.cex = 0.8)
+corThreshold <- 0.95
 
-high_corr_matrix <- cor_matrix
-high_corr_matrix[abs(high_corr_matrix) < 0.95 | diag(ncol(high_corr_matrix)) == 1] <- 0  
-corrplot(high_corr_matrix,
-         method = "color",
-         order = "hclust",
-         hclust.method = "complete", 
-         tl.cex = 0.8)
+# all environmental variables
+spatVarsAll <- c(traitNames,
+                 setdiff(names(BioCube_varsBuffers[["150"]]), c("cell_unit", "long", "lat")))
+length(spatVarsAll) # 14 traits + 96 BioCube layers = 110 vars
 
-high_corr_pairs <- as.data.frame(as.table(cor_matrix)) %>%
-  filter(Var1 != Var2, abs(Freq) > 0.9)
+# pairs of variables with |r| above the threshold (each pair listed once)
+find_high_cor <- function(x, vars, thr = corThreshold) {
+  m <- cor(x[vars], use = "complete.obs")
+  m[lower.tri(m, diag = TRUE)] <- NA
+  as.data.frame(as.table(m)) %>%
+    filter(!is.na(Freq), abs(Freq) > thr) %>%
+    dplyr::rename(var1 = Var1, var2 = Var2, r = Freq) %>%
+    arrange(desc(abs(r)))
+}
+
+# check correlations for the current set of variables -------------------------
+# Variables are removed one at a time: add a name to removeVars (below), then rerun
+# check_cor(removeVars). The data are not changed until the end of this section,
+# so the plots and the pair list can be regenerated as often as needed.
+# Variables already dropped from the table are skipped, so this also works after
+# the removal step has been run.
+
+check_cor <- function(removeVars = c(), thr = corThreshold, b = "150") {
+  x <- siteDetections_foliarTraits_BioCubeBuffers[[b]]
+  vars <- intersect(setdiff(spatVarsAll, removeVars), names(x))
+  m <- cor(x[vars], use = "complete.obs")
+  corrplot(m,
+           method = "color",
+           order = "hclust",
+           hclust.method = "complete",
+           addrect = 3,
+           tl.cex = 0.8)
+  h <- m
+  h[abs(h) < thr | diag(ncol(h)) == 1] <- 0
+  corrplot(h,
+           method = "color",
+           order = "hclust",
+           hclust.method = "complete",
+           tl.cex = 0.8)
+  find_high_cor(x, vars, thr) # pairs above the threshold, highest first
+}
+
+check_cor() # all variables (150 m)
 
 # in Cali, there are dry summers and wet winters, so some bioclim vars are duplicate.
 # bio16 and bio19 are 0.999 identical. precip of wettest/coldest quarter. remove bio16(wettest)?
 # bio09 and bio10 are 0.999 identical. temp of dryest/warmest quarter. remove bio09(dryest)?
-# ggd5 and gdd10 are 0.999 identical. remove gdd5?
+# gdd5 and gdd10 are 0.999 identical. remove gdd5?
 # bio08 and bio11 are 0.998 identical. temp of wettest/coldest quarter. remove bio11(coldest)?
-# swe and ngd0 are 0.98 identical. remove ngd0
-# swe and scd 0.98 identical
+# All these are > 95% correlated with DTM: "bio01", "bio05", "bio10", "bio08", "PETDryQuart", "bio06", "annualPET", "gdd10", "ngd5", "PETseas", "PETWarmQuart", "thermInd"
+# gdd10 and ngd10, and gg0 removing ngd10 and gdd0
+# Slope and TRI, remove TRI
+# swe and scd 0.98 identical, remove swe
+# bio12 and bio19 0.98, keep annualPrecip(12), remove 19
+# LMA and starch 0.98, remove starch (goodbye one foliar trait)
+# ngdo, scd 0.97, remove ngd0
 
-# All these are > 95% correlated with DTM
-# bio01, bio05, bio06, bio08, bio10, gdd10, ngd10, ngd5, annualPET, PETDryQuart, PETseas, PETWarmQuart, thermInd
+# remove (same list for all three buffer versions)
+removeVars <- c("bio16", "bio09", "gdd5", "bio11", "bio01", "bio05", "ngd10", 
+                "gdd0", "bio10", "bio08", "PETDryQuart", "bio06", "annualPET", 
+                "TRI", "swe", "gdd10", "ngd5", "PETseas", "PETWarmQuart", 
+                "thermInd", "bio19", "Starch", "ngd0", "Sulfur", "DTM_std", "bio18")
+check_cor(removeVars) # rerun after each addition to removeVars
+removeVars[!removeVars %in% spatVarsAll] # should be empty (catches typos in names)
 
-# remove
-siteDetections_foliarTraits_BioCube$bio16 <- NULL
-siteDetections_foliarTraits_BioCube$bio09 <- NULL
-siteDetections_foliarTraits_BioCube$gdd5 <- NULL
-siteDetections_foliarTraits_BioCube$bio11 <- NULL
-siteDetections_foliarTraits_BioCube$bio01 <- NULL
-siteDetections_foliarTraits_BioCube$bio05 <- NULL
-siteDetections_foliarTraits_BioCube$bio06 <- NULL
-siteDetections_foliarTraits_BioCube$bio08 <- NULL
-siteDetections_foliarTraits_BioCube$bio10 <- NULL
-siteDetections_foliarTraits_BioCube$gdd0 <- NULL
-siteDetections_foliarTraits_BioCube$gdd10 <- NULL
-siteDetections_foliarTraits_BioCube$ngd10 <- NULL
-siteDetections_foliarTraits_BioCube$ngd5 <- NULL
-siteDetections_foliarTraits_BioCube$annualPET <- NULL
-siteDetections_foliarTraits_BioCube$PETDryQuart <- NULL
-siteDetections_foliarTraits_BioCube$PETseas <- NULL
-siteDetections_foliarTraits_BioCube$PETWarmQuart <- NULL
-siteDetections_foliarTraits_BioCube$ngd0 <- NULL
-siteDetections_foliarTraits_BioCube$thermInd <- NULL
-siteDetections_foliarTraits_BioCube$TRI <- NULL
-siteDetections_foliarTraits_BioCube$scd <- NULL
-siteDetections_foliarTraits_BioCube$bio19 <- NULL
-siteDetections_foliarTraits_BioCube$Starch <- NULL
+siteDetections_foliarTraits_BioCubeBuffers <- lapply(siteDetections_foliarTraits_BioCubeBuffers,
+                                                     function(x) x[setdiff(names(x), removeVars)])
+spatVars <- setdiff(spatVarsAll, removeVars)
+length(spatVars) # variables used in the PCA
+# length 87 # now 84
+
+# check: no remaining pairs above the threshold in any buffer version
+lapply(siteDetections_foliarTraits_BioCubeBuffers, find_high_cor, vars = spatVars) # should all be empty
+# 300m has 3 more vars above the 0.95 threshold
+# LMA and Sulfur -0.952, remove sulfur
+# DTM_std and Slope, 0.952, remove DTM_std
+# bio17 and bio18 0.951, remove bio18
 
 # save updated version
-write_rds(siteDetections_foliarTraits_BioCube, "siteDetections_foliarTraits_BioCube_20250522.rds")
-write_csv(siteDetections_foliarTraits_BioCube, "siteDetections_foliarTraits_BioCube_20250522.csv")
-siteDetections_foliarTraits_BioCube <- readRDS("siteDetections_foliarTraits_BioCube_20250522.rds")
+for (b in names(siteDetections_foliarTraits_BioCubeBuffers)) {
+  write_rds(siteDetections_foliarTraits_BioCubeBuffers[[b]],
+            paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261106.rds"))
+  x <- siteDetections_foliarTraits_BioCubeBuffers[[b]]
+  x$geometry <- NULL
+  write_csv(x, paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261106.csv"))
+}
 
+# TODO 06 Nov 2026: sections 13 onward still use a single table. Until they are
+# converted, they use the 150 m version.
+siteDetections_foliarTraits_BioCube <- siteDetections_foliarTraits_BioCubeBuffers[["150"]]
+
+
+# check for NA values ----------------------------------------------------------
+lapply(siteDetections_foliarTraits_BioCubeBuffers, function(x) {
+  n <- colSums(is.na(x[spatVars])); n[n > 0]
+})
+# no NAs. good to go. 
 
 ################################################################################
 # 13) Niche Space PCA
