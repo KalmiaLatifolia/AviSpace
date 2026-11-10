@@ -30,35 +30,34 @@ library(coda)
 library(mgcv)
 
 # Table of contents ------------------------------------------------------------
-# 1) Processing ARU bioacoustic data - 74
-# 2) Species complexes and cross-identification - 147
-# 3) Adjust detection rates for day-of-year and year - 244
-# 4) Site buffers - 474
-# 5) Remove burned areas - 501
-# 6) Get foliar traits - 568
-# 7) Get biocube variables - 657
-# 8) add USGS CONUS GAP 2011 landcover type - 736
-# 9) which points are too close to each other? - 768
-# 10) remove species with insufficient data - 838
-# 11) make a nice map - 890
-# 12) check for colinearity - 928
-# 13) Niche Space PCA - 1026
-# 14) PCA loadings (supp figures) - 1046
-# 15) render landcover labels - 1115
-# 16) test plot for errored species polygons - 1198
-# 17) Species Niche Polygons - 1237
-# 18) plot 2 species niche overlap - 1336
-# 19) Calculate all pairwise overlaps - 1464
-# 20) Species niche Areas & Percent overlap - 1508
-# 21) calculate Range overlaps - 1534
-# 22) Range Overlap Maps - 1683
-# 23) Combine range overlaps and niche overlaps - 1788
-# 24) plot range vs niche overlap - 1822
-# 25) Mixed effects model - 1914
-# 26) permutation test - 2068
-# 27) Figure 4 niche areas - 2111
-# 28) Figure 5 - matrix - 2127
-# 29) Species details supp table - 2266
+# 1) Processing ARU bioacoustic data - 73
+# 2) Species complexes and cross-identification - 146
+# 3) Adjust detection rates for day-of-year and year - 243
+# 4) Site buffers - 473
+# 5) Remove burned areas - 500
+# 6) Get 1 km habitat variables - 567
+# 7) add USGS CONUS GAP 2011 landcover type - 676
+# 8) which points are too close to each other? - 708
+# 9) remove species with insufficient data - 778
+# 10) make a nice map - 830
+# 11) check for colinearity - 868
+# 12) Niche Space PCA - 978
+# 13) PCA loadings (supp figures) - 998
+# 14) render landcover labels - 1067
+# 15) test plot for errored species polygons - 1150
+# 16) Species Niche Polygons - 1189
+# 17) plot 2 species niche overlap - 1288
+# 18) Calculate all pairwise overlaps - 1416
+# 19) Species niche Areas & Percent overlap - 1460
+# 20) calculate Range overlaps - 1486
+# 21) Range Overlap Maps - 1635
+# 22) Combine range overlaps and niche overlaps - 1740
+# 23) plot range vs niche overlap - 1774
+# 24) Mixed effects model - 1866
+# 25) permutation test - 2020
+# 26) Figure 4 niche areas - 2063
+# 27) Figure 5 - matrix - 2079
+# 28) Species details supp table - 2218
 
 
 # working directory  -----------------------------------------------------------
@@ -297,7 +296,7 @@ rm(inFull)
 
 
 # which species have enough data to fit a curve? -------------------------------
-# fit cut-offs: > 30 sites and >= 300 detections. Section 10 uses the same
+# fit cut-offs: > 30 sites and >= 300 detections. Section 9 uses the same
 # cut-offs on the final site set of each buffer version.
 
 speciesTotals <- dailyCounts %>%
@@ -374,7 +373,7 @@ phenoRates <- map_dfr(phenoFits, "rates")
 phenoCurves <- map_dfr(phenoFits, "curve")
 phenoInfo <- map_dfr(phenoFits, "info")
 
-# raw rates for species not fitted (too few data; removed later in section 10)
+# raw rates for species not fitted (too few data; removed later in section 9)
 
 rawRates <- dailyCounts %>%
   filter(!species_code %in% phenoRates$species_code) %>%
@@ -420,7 +419,7 @@ ggsave("FigureS_phenologyCurves_20261104.pdf", height = 14, width = 11)
 siteDetections <- merge(siteDetections, commonNames)
 siteDetections <- merge(siteDetections, unit_effort)
 
-# raw detection counts on 7 h days per site x species (used in section 10)
+# raw detection counts on 7 h days per site x species (used in section 9)
 siteCounts <- siteDetections[c("cell_unit", "common_name", "n_detections")]
 siteCounts$species <- make.names(siteCounts$common_name) # matches column names later on
 write_rds(siteCounts, "siteCounts_20261105.rds")
@@ -565,8 +564,15 @@ for (b in names(siteDetectionsBuffers)) {
 
 
 ################################################################################
-# 6) Get foliar traits
+# 6) Get 1 km habitat variables
 ################################################################################
+# 10 Nov 2026. Equal-grain version: every habitat variable is at the BioCube
+# resolution (30 arc-seconds, ~1 km). Foliar traits (mean and SD of the 30 m
+# pixels in each 1 km cell) and canopy height were resampled to the BioCube grid
+# in resampling.R and saved with the other layers in California_biocube_1km_layers.
+# This replaces the earlier 30 m trait extraction (see git history).
+
+# RUNNING LEFT OFF HERE ######
 
 # get tahoe and yosemite boxes -------------------------------------------------
 
@@ -579,8 +585,9 @@ mapview(tahoe) +
 mapview(siteDetectionsBuffers[["150"]]) + mapview(tahoe) + mapview(yosemite)
 # not necessary
 
+
 # buffers for the sites kept after fire removal --------------------------------
-# one set per buffer size (sections 4-5). Transformed to WGS84 as before.
+# one set per buffer size (sections 4-5), in WGS84 like the 1 km layers
 
 bufferPolys <- lapply(names(siteBuffers), function(b)
   siteBuffers[[b]] %>%
@@ -589,115 +596,45 @@ bufferPolys <- lapply(names(siteBuffers), function(b)
     dplyr::select(cell_unit, long, lat))
 names(bufferPolys) <- names(siteBuffers)
 
-# foliar trait mosaics ---------------------------------------------------------
-# each trait has a Yosemite and a Tahoe mosaic (30 m), merged into one layer
 
-traitNames <- c("Nitrogen", "LMA", "Cellulose", "Calcium", "Chlorophylls",
-                "Fiber", "Lignin", "NSC", "Phenolics", "Phosphorus",
-                "Potassium", "Starch", "Sugar", "Sulfur")
+# 1 km layers ------------------------------------------------------------------
 
-load_trait <- function(trait) {
-  merge(raster(file.path(base_dir, "mosaics", paste0("yosemite_20180622_", trait, "_30m_polished.tif"))),
-        raster(file.path(base_dir, "mosaics", paste0("tahoe_20180621_", trait, "_30m_polished.tif"))))
-}
+path_CA <- file.path(base_dir, "California_biocube_1km_layers")
+CAbiocube_files <- list.files(path_CA, pattern = "\\.tif$")
+length(CAbiocube_files) # 124 = 94 BioCube layers + 14 trait means + 14 trait SDs + 2 canopy height
 
 # check one trait against the buffers
-mapview(load_trait("Nitrogen")) + mapview(bufferPolys[["150"]])
-
-# area-weighted mean of each trait within each buffer --------------------------
-# (slow) each mosaic is loaded once and extracted for all three buffer sizes.
-# 0 = no data in the mosaics, set to NA.
-
-# results tables (cell_unit, long, lat), one per buffer size. The extraction
-# below uses the buffer polygons in bufferPolys; only these output tables
-# have no geometry. Rows are in the same order as bufferPolys.
-foliarTraitsBuffers <- lapply(bufferPolys, st_drop_geometry)
-
-for (trait in traitNames) {
-  r <- load_trait(trait)
-  for (b in names(bufferPolys)) {
-    v <- as.numeric(raster::extract(r, bufferPolys[[b]], weights = TRUE,
-                                    na.rm = TRUE, fun = mean))
-    v[v == 0] <- NA
-    foliarTraitsBuffers[[b]][[trait]] <- v
-  }
-  message(trait, " done")
-}
-rm(r, v)
-
-# merge foliar traits with siteDetections and remove sites with no trait data --
-
-siteDetections_foliarTraitsBuffers <- lapply(names(bufferPolys), function(b) {
-  x <- merge(siteDetectionsBuffers[[b]],
-             foliarTraitsBuffers[[b]][c("cell_unit", traitNames)],
-             by = "cell_unit")
-  x[!is.na(x$Nitrogen), ]
-})
-names(siteDetections_foliarTraitsBuffers) <- names(bufferPolys)
-sapply(siteDetections_foliarTraitsBuffers, nrow) # sites with trait data for 50, 150, 300 m (580 before, 150 m)
-# 50m 584 sites 
-# 150m 578 sites
-# 300m 570 sites
-
-mapview(siteDetections_foliarTraitsBuffers[["150"]], zcol = "Nitrogen")
-
-# save -------------------------------------------------------------------------
-
-for (b in names(bufferPolys)) {
-  write_csv(foliarTraitsBuffers[[b]], paste0("foliarTraits_buffer", b, "m_20261106.csv"))
-  write_rds(siteDetections_foliarTraitsBuffers[[b]],
-            paste0("siteDetections_foliarTraits_buffer", b, "m_20261106.rds"))
-  x <- st_drop_geometry(siteDetections_foliarTraitsBuffers[[b]])
-  write_csv(x, paste0("siteDetections_foliarTraits_buffer", b, "m_20261106.csv"))
-}
-rm(x)
+mapview(raster(file.path(path_CA, "CA_Physiology_Nitrogen_mean_1km.tif"))) +
+  mapview(bufferPolys[["150"]])
 
 
-################################################################################
-# 7) Get biocube variables
-################################################################################
-
-# buffers for the sites kept after the foliar trait step ------------------------
-# one set per buffer size, as in section 6
-
-bufferPolys <- lapply(names(siteBuffers), function(b)
-  siteBuffers[[b]] %>%
-    filter(cell_unit %in% siteDetections_foliarTraitsBuffers[[b]]$cell_unit) %>%
-    st_transform(4326) %>%
-    dplyr::select(cell_unit, long, lat))
-names(bufferPolys) <- names(siteBuffers)
-
-
-# get biocube paths and files --------------------------------------------------
-
-path_CA <- file.path(base_dir, "California biocube layers")
-CAbiocube_files <- list.files(path_CA, pattern = "\\.tif$") # 96 layers
-
-
-# area-weighted mean of each layer within each buffer -------------------(slow)
-# each layer is loaded once and extracted for all three buffer sizes.
+# area-weighted mean of each layer within each buffer --------------------------
+# Each layer is loaded once and extracted for all three buffer sizes.
+# terra::extract with exact = TRUE weights each 1 km cell by the share of the
+# buffer it covers (same values as raster::extract with weights = TRUE, faster).
 # Results tables have no geometry; the extraction uses the polygons in bufferPolys.
 
+vectPolys <- lapply(bufferPolys, terra::vect)
 BioCube_varsBuffers <- lapply(bufferPolys, st_drop_geometry)
 
 for (f in CAbiocube_files) {
-  r <- raster(file.path(path_CA, f))
-  for (b in names(bufferPolys)) {
-    BioCube_varsBuffers[[b]][[f]] <- as.numeric(raster::extract(r, bufferPolys[[b]], weights = TRUE,
-                                                                na.rm = TRUE, fun = mean))
+  r <- terra::rast(file.path(path_CA, f))[[1]]
+  for (b in names(vectPolys)) {
+    BioCube_varsBuffers[[b]][[f]] <- terra::extract(r, vectPolys[[b]], fun = mean,
+                                                    exact = TRUE, na.rm = TRUE)[, 2]
   }
   message(f, " done")
 }
 rm(r)
 
-# save the raw extraction right away (slow step; original file names as columns).
+# save the raw extraction right away (original file names as columns).
 # To skip the extraction on a rerun, load this instead of running the loop above:
-# BioCube_varsBuffers <- readRDS("BioCube_varsBuffers_raw_20261109.rds")
-write_rds(BioCube_varsBuffers, "BioCube_varsBuffers_raw_20261109.rds")
+# BioCube_varsBuffers <- readRDS("BioCube_varsBuffers_raw_20261110.rds")
+write_rds(BioCube_varsBuffers, "BioCube_varsBuffers_raw_20261110.rds")
 
-# RUNNING LEFT OFF HERE ######
 
 # tidy variable names ----------------------------------------------------------
+# tidyNames.csv includes the resampled trait and canopy height layers (added by resampling.R)
 
 tidy <- read_csv("tidyNames.csv")
 rename_map <- setNames(tidy$VariableName, tidy$FileName)
@@ -707,33 +644,36 @@ BioCube_varsBuffers <- lapply(BioCube_varsBuffers, function(x) {
   names(x)[hit] <- rename_map[names(x)[hit]]
   x
 })
+sapply(BioCube_varsBuffers, function(x) sum(!names(x) %in% c("cell_unit", "long", "lat", rename_map))) # should be 0 (all layers renamed)
 
 
-# merge with detections and foliar traits --------------------------------------
+# merge with detections and remove sites with no foliar trait data -------------
+# Nitrogen is NA where the 1 km cell(s) under a buffer have no valid 30 m trait pixels
 
-siteDetections_foliarTraits_BioCubeBuffers <- lapply(names(bufferPolys), function(b)
-  merge(siteDetections_foliarTraitsBuffers[[b]],
-        BioCube_varsBuffers[[b]][setdiff(names(BioCube_varsBuffers[[b]]), c("long", "lat"))],
-        by = "cell_unit"))
+siteDetections_foliarTraits_BioCubeBuffers <- lapply(names(bufferPolys), function(b) {
+  x <- merge(siteDetectionsBuffers[[b]],
+             BioCube_varsBuffers[[b]][setdiff(names(BioCube_varsBuffers[[b]]), c("long", "lat"))],
+             by = "cell_unit")
+  x[!is.na(x$Nitrogen), ]
+})
 names(siteDetections_foliarTraits_BioCubeBuffers) <- names(bufferPolys)
-sapply(siteDetections_foliarTraits_BioCubeBuffers, nrow) # sites for 50, 150, 300 m
+sapply(siteDetections_foliarTraits_BioCubeBuffers, nrow) # sites for 50, 150, 300 m (30 m traits: 584, 578, 570)
 sapply(siteDetections_foliarTraits_BioCubeBuffers, function(x) sum(is.na(st_drop_geometry(x)))) # NA values
 
 
 # save -------------------------------------------------------------------------
 
 for (b in names(bufferPolys)) {
-  write_rds(BioCube_varsBuffers[[b]], paste0("BioCube_vars_buffer", b, "m_20261106.rds"))
+  write_rds(BioCube_varsBuffers[[b]], paste0("BioCube_vars_buffer", b, "m_20261110.rds"))
   write_rds(siteDetections_foliarTraits_BioCubeBuffers[[b]],
-            paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261106.rds"))
+            paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261110.rds"))
   write_csv(st_drop_geometry(siteDetections_foliarTraits_BioCubeBuffers[[b]]),
-            paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261106.csv"))
+            paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261110.csv"))
 }
 
 
-
 ################################################################################
-# 8) add USGS CONUS GAP 2011 landcover type
+# 7) add USGS CONUS GAP 2011 landcover type
 ################################################################################
 # landcover type at each ARU location (point value), added to each buffer version
 
@@ -765,7 +705,7 @@ sapply(siteDetections_foliarTraits_BioCubeBuffers, nrow) # sites with a landcove
 # 570 obs 300m
 
 ################################################################################
-# 9) which points are too close to each other?
+# 8) which points are too close to each other?
 ################################################################################
 # 06 Nov 2026. Automated, run separately for each buffer version.
 # When two sites are < 500 m apart, one is dropped: the site with more missing
@@ -835,7 +775,7 @@ sapply(siteDetections_foliarTraits_BioCubeBuffers, avg_cell_distance) # meters (
 # 948m 300m
 
 ################################################################################
-# 10) remove species with insufficient data
+# 9) remove species with insufficient data
 ################################################################################
 # 06 Nov 2026. Automated, run separately for each buffer version.
 # Remove species detected at 30 or fewer sites or with fewer than 300 total detections
@@ -880,14 +820,14 @@ for (b in names(siteDetections_foliarTraits_BioCubeBuffers)) {
   write_csv(x, paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261106.csv"))
 }
 
-# 150 m version, used for the site map in section 11
+# 150 m version, used for the site map in section 10
 siteDetections_foliarTraits_BioCube <- siteDetections_foliarTraits_BioCubeBuffers[["150"]]
 speciesSites <- speciesCounts[["150"]][c("common_name", "totalSites")]
 speciesDetections <- speciesCounts[["150"]][c("common_name", "totalDetections")]
 
 
 ################################################################################
-# 11) make a nice map
+# 10) make a nice map
 ################################################################################
 
 # update sites
@@ -925,7 +865,7 @@ ggplot() +
 ggsave("point_map.pdf", height=7, width=5)
 
 ################################################################################
-# 12) check for colinearity
+# 11) check for colinearity
 ################################################################################
 # 06 Nov 2026. Variables are selected by name (all foliar traits and all BioCube
 # layers). Correlations are checked on the 150 m version, where the choices of
@@ -937,9 +877,9 @@ ggsave("point_map.pdf", height=7, width=5)
 corThreshold <- 0.95
 
 # all environmental variables
-spatVarsAll <- c(traitNames,
-                 setdiff(names(BioCube_varsBuffers[["150"]]), c("cell_unit", "long", "lat")))
-length(spatVarsAll) # 14 traits + 96 BioCube layers = 110 vars
+spatVarsAll <- setdiff(names(BioCube_varsBuffers[["150"]]), c("cell_unit", "long", "lat"))
+length(spatVarsAll) # 124 = 94 BioCube layers + 14 trait means + 14 trait SDs + 2 canopy height
+# (30 m version: 14 traits + 96 BioCube layers = 110 vars)
 
 # pairs of variables with |r| above the threshold (each pair listed once)
 find_high_cor <- function(x, vars, thr = corThreshold) {
@@ -1023,7 +963,7 @@ for (b in names(siteDetections_foliarTraits_BioCubeBuffers)) {
   write_csv(x, paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261106.csv"))
 }
 
-# TODO 06 Nov 2026: sections 13 onward still use a single table. Until they are
+# TODO 06 Nov 2026: sections 12 onward still use a single table. Until they are
 # converted, they use the 150 m version.
 siteDetections_foliarTraits_BioCube <- siteDetections_foliarTraits_BioCubeBuffers[["150"]]
 
@@ -1035,7 +975,7 @@ lapply(siteDetections_foliarTraits_BioCubeBuffers, function(x) {
 # no NAs. good to go. 
 
 ################################################################################
-# 13) Niche Space PCA
+# 12) Niche Space PCA
 ################################################################################
 
 # convert to count data --------------------------------------------------------
@@ -1055,7 +995,7 @@ roundedPCA <- cbind(roundedCounts, traitsPCA$x)
 
 
 ################################################################################
-# 14) PCA loadings (supp figures)
+# 13) PCA loadings (supp figures)
 ################################################################################
 
 
@@ -1124,7 +1064,7 @@ fviz_contrib(traitsPCA, choice="var", axes = 2, sort.val ="asc") +
   ylab("Habitat")
 
 ################################################################################
-# 15) render landcover labels
+# 14) render landcover labels
 ################################################################################
 
 # the plot
@@ -1207,7 +1147,7 @@ landcover_centroids$Groups[landcover_centroids$Groups == "California Montane Jef
 landcover_centroids$Groups[landcover_centroids$Groups == "Sierra Nevada Subalpine Lodgepole Pine Forest and Woodland"] <- "Subalpine Lodgepole Pine Forest and Woodland"
 
 ################################################################################
-# 16) test plot for errored species polygons
+# 15) test plot for errored species polygons
 ################################################################################
 
 # some species weren't plotting correctly because not enough points
@@ -1246,7 +1186,7 @@ ggplot(roundedPCA, aes(x=PC1, y=PC2, color=get(species1))) + geom_point() + scal
 ggplot(uncounted_data1, aes(x=PC1, y=PC2)) + geom_point(alpha=0.05)
 
 ################################################################################
-# 17) Species Niche Polygons
+# 16) Species Niche Polygons
 ################################################################################
 
 
@@ -1345,7 +1285,7 @@ write_rds(speciesPolygons, "speciesPolygons_jittered_detPerDay_20250624.rds")
 
 
 ################################################################################
-# 18) plot 2 species niche overlap
+# 17) plot 2 species niche overlap
 ################################################################################
 
 # pick my favorite eigenvectors ------------------------------------------------
@@ -1473,7 +1413,7 @@ fviz_pca_ind(traitsPCA,
 ggsave("OverlapPoly_YRWarb_RBNut.pdf", height=5, width=7)
 
 ################################################################################
-# 19) Calculate all pairwise overlaps
+# 18) Calculate all pairwise overlaps
 ################################################################################
 
 # define species combinations --------------------------------------------------
@@ -1517,7 +1457,7 @@ write.csv(pairwise_combinations, "speciesNicheOverlapAreas_jittered_detPerWeek_2
 
 
 ################################################################################
-# 20) Species niche Areas & Percent overlap
+# 19) Species niche Areas & Percent overlap
 ################################################################################
 
 # species areas
@@ -1543,7 +1483,7 @@ write_rds(percentOverlap, "percentOverlap_20250624.rds")
 
 
 ################################################################################
-# 21) calculate Range overlaps
+# 20) calculate Range overlaps
 ################################################################################
 
 
@@ -1692,7 +1632,7 @@ write_rds(rangeOverlapsDot, "rangeOverlaps_dotNames_20250624.rds")
 rangeOverlaps <- readRDS("rangeOverlaps_dotNames_20250623.rds")
 
 ################################################################################
-# 22) Range Overlap Maps
+# 21) Range Overlap Maps
 ################################################################################
 
 
@@ -1797,7 +1737,7 @@ ggplot() +
 ggsave("RangeOverlap_OakTit_RNSap.pdf", height=7, width=7)
 
 ################################################################################
-# 23) Combine range overlaps and niche overlaps
+# 22) Combine range overlaps and niche overlaps
 ################################################################################
 
 # ensure column names are informative ------------------------------------------
@@ -1831,7 +1771,7 @@ merge2 <- merge(NicheOverlap, rangeOverlaps, by.x = c("species1", "species2"), b
 NicheRangeOverlap <- rbind(merge1, merge2)
 
 ################################################################################
-# 24) plot range vs niche overlap
+# 23) plot range vs niche overlap
 ################################################################################
 
 # mark congeneric pairs --------------------------------------------------------
@@ -1923,7 +1863,7 @@ ggsave("NicheRangeOverlap_points_20260706.pdf", height=5, width=7)
 
 
 ################################################################################
-# 25) Mixed effects model
+# 24) Mixed effects model
 ################################################################################
 
 # Mixed effects model - accounts for species non-independence (the same species appear in multiple pairs)
@@ -2077,7 +2017,7 @@ ggplot(subset(NicheRangeOverlapDot, NicheRangeOverlapDot$congeneric=="Same Genus
   ylab("Range Overlap (%)")
 
 ################################################################################
-# 26) permutation test
+# 25) permutation test
 ################################################################################
 
 # ---- 1. Species -> genus map, straight from the genus columns ----
@@ -2120,7 +2060,7 @@ hist(null, breaks = 40, main = "Permutation null: slope difference",
 
 
 ################################################################################
-# 27) Figure 4 niche areas 
+# 26) Figure 4 niche areas 
 ################################################################################
 
 ggplot(NicheAreas, aes(x = reorder(species, area), y = area)) +
@@ -2136,7 +2076,7 @@ ggplot(NicheAreas, aes(x = reorder(species, area), y = area)) +
 ggsave("NicheAreas_20250709.pdf", height=12, width=7)
 
 ################################################################################
-# 28) Figure 5 - matrix
+# 27) Figure 5 - matrix
 ################################################################################
 
 # Heirarchical Matrix
@@ -2275,7 +2215,7 @@ combined_plot
 ggsave("Figure5_matrix_sup.PDF", height=8, width=9)
 
 ################################################################################
-# 29) Species details supp table
+# 28) Species details supp table
 ################################################################################
 
 # niche area
