@@ -36,28 +36,28 @@ library(mgcv)
 # 4) Site buffers - 473
 # 5) Remove burned areas - 500
 # 6) Get 1 km habitat variables - 567
-# 7) add USGS CONUS GAP 2011 landcover type - 676
-# 8) which points are too close to each other? - 708
-# 9) remove species with insufficient data - 778
-# 10) make a nice map - 830
-# 11) check for colinearity - 868
-# 12) Niche Space PCA - 978
-# 13) PCA loadings (supp figures) - 998
-# 14) render landcover labels - 1067
-# 15) test plot for errored species polygons - 1150
-# 16) Species Niche Polygons - 1189
-# 17) plot 2 species niche overlap - 1288
-# 18) Calculate all pairwise overlaps - 1416
-# 19) Species niche Areas & Percent overlap - 1460
-# 20) calculate Range overlaps - 1486
-# 21) Range Overlap Maps - 1635
-# 22) Combine range overlaps and niche overlaps - 1740
-# 23) plot range vs niche overlap - 1774
-# 24) Mixed effects model - 1866
-# 25) permutation test - 2020
-# 26) Figure 4 niche areas - 2063
-# 27) Figure 5 - matrix - 2079
-# 28) Species details supp table - 2218
+# 7) add USGS CONUS GAP 2011 landcover type - 684
+# 8) which points are too close to each other? - 716
+# 9) remove species with insufficient data - 786
+# 10) make a nice map - 838
+# 11) check for colinearity - 876
+# 12) Niche Space PCA - 986
+# 13) PCA loadings (supp figures) - 1006
+# 14) render landcover labels - 1075
+# 15) test plot for errored species polygons - 1158
+# 16) Species Niche Polygons - 1197
+# 17) plot 2 species niche overlap - 1296
+# 18) Calculate all pairwise overlaps - 1424
+# 19) Species niche Areas & Percent overlap - 1468
+# 20) calculate Range overlaps - 1494
+# 21) Range Overlap Maps - 1643
+# 22) Combine range overlaps and niche overlaps - 1748
+# 23) plot range vs niche overlap - 1782
+# 24) Mixed effects model - 1874
+# 25) permutation test - 2028
+# 26) Figure 4 niche areas - 2071
+# 27) Figure 5 - matrix - 2087
+# 28) Species details supp table - 2226
 
 
 # working directory  -----------------------------------------------------------
@@ -647,6 +647,14 @@ BioCube_varsBuffers <- lapply(BioCube_varsBuffers, function(x) {
 sapply(BioCube_varsBuffers, function(x) sum(!names(x) %in% c("cell_unit", "long", "lat", rename_map))) # should be 0 (all layers renamed)
 
 
+# exclude gsp ------------------------------------------------------------------
+# 10 Nov 2026. Growing season precipitation (CHELSA-BIOCLIM+ gsp) is excluded: the
+# source file has unflagged no-data cells (4294967295), giving extreme outliers
+# (e.g. 3.3 million at C4833_U2, 150 m buffer).
+
+BioCube_varsBuffers <- lapply(BioCube_varsBuffers, function(x) x[setdiff(names(x), "gsp")])
+
+
 # merge with detections and remove sites with no foliar trait data -------------
 # Nitrogen is NA where the 1 km cell(s) under a buffer have no valid 30 m trait pixels
 
@@ -657,9 +665,9 @@ siteDetections_foliarTraits_BioCubeBuffers <- lapply(names(bufferPolys), functio
   x[!is.na(x$Nitrogen), ]
 })
 names(siteDetections_foliarTraits_BioCubeBuffers) <- names(bufferPolys)
-sapply(siteDetections_foliarTraits_BioCubeBuffers, nrow) # sites for 50, 150, 300 m (30 m traits: 584, 578, 570)
+sapply(siteDetections_foliarTraits_BioCubeBuffers, nrow) # sites for 50, 150, 300 m (30 m traits were: 584, 578, 570)(now 600, 593, 580)
 sapply(siteDetections_foliarTraits_BioCubeBuffers, function(x) sum(is.na(st_drop_geometry(x)))) # NA values
-
+# NA values 50m 1410, 150m 1381, 300m 1307 
 
 # save -------------------------------------------------------------------------
 
