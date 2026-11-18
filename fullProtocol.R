@@ -120,6 +120,7 @@ effort <- vroom(file.path(base_dir, "laura_berman_diurnal_birds/data-clean",
                 col_types = cols_only(cell_unit = col_character(),
                                       date = col_character(),
                                       aru_hours = col_double()))
+
 # nrow(effort) should be 371,673 # correct
 # effort includes rows for days with 0 effort
 # nrow(subset(effort, effort$aru_hours==7)) = 66,349 obs = total full recording days (subsampling records 7 hrs per day)
@@ -572,8 +573,6 @@ for (b in names(siteDetectionsBuffers)) {
 # in resampling.R and saved with the other layers in California_biocube_1km_layers.
 # This replaces the earlier 30 m trait extraction (see git history).
 
-# RUNNING LEFT OFF HERE ######
-
 # get tahoe and yosemite boxes -------------------------------------------------
 
 tahoe <- read_sf(file.path(base_dir, "tahoe box/tahoe_shp.shp"))
@@ -637,7 +636,7 @@ write_rds(BioCube_varsBuffers, "BioCube_varsBuffers_raw_20261110.rds")
 # 17 Nov 2026. In the CHELSA-BIOCLIM+ snow cover days (scd), snow water
 # equivalent (swe) and frost change frequency (fcf) layers, the no-data cells are
 # the warm, low-elevation areas (no snow / no frost-change events), and the files
-# contain no zeros. No-data is therefore treated as 0. These three layers are
+# contain no zeros. This looks like a mistake - NA is therefore treated as 0. These three layers are
 # re-extracted with no-data set to 0 before averaging, so a buffer that is partly
 # in a no-snow cell gets a correctly weighted mean. (Runs whether the loop above
 # was run or the raw file was loaded.)
@@ -684,7 +683,7 @@ BioCube_varsBuffers <- lapply(BioCube_varsBuffers, function(x) x[setdiff(names(x
 BioCube_varsBuffers <- lapply(BioCube_varsBuffers, function(x)
   x[setdiff(names(x), c("WHI_pFWOS", "WHI_SCV", "WHI_SSL", "AMP"))])
 
-
+# BioCube_varsBuffers has 122 vars
 # merge with detections and remove sites with no foliar trait data -------------
 # Nitrogen is NA where the 1 km cell(s) under a buffer have no valid 30 m trait pixels
 
@@ -699,11 +698,10 @@ siteDetections_foliarTraits_BioCubeBuffers <- lapply(names(bufferPolys), functio
   x[complete.cases(st_drop_geometry(x)[envVars]), ]
 })
 names(siteDetections_foliarTraits_BioCubeBuffers) <- names(bufferPolys)
-sapply(siteDetections_foliarTraits_BioCubeBuffers, nrow) # sites for 50, 150, 300 m (30 m traits were: 584, 578, 570)(now 600, 593, 580)
-sapply(names(siteDetections_foliarTraits_BioCubeBuffers), function(b)       # NA habitat values, should be 0
+sapply(siteDetections_foliarTraits_BioCubeBuffers, nrow) # sites for 50, 150, 300 m (30 m traits were: 584, 578, 570)(now 599, 592, 580)
+sapply(names(siteDetections_foliarTraits_BioCubeBuffers), function(b)       # NA habitat values, should be 0. Yup. 
   sum(is.na(st_drop_geometry(siteDetections_foliarTraits_BioCubeBuffers[[b]])[
     setdiff(names(BioCube_varsBuffers[[b]]), c("cell_unit", "long", "lat"))])))
-# NA values 50m 1410, 150m 1381, 300m 1307 
 
 # save -------------------------------------------------------------------------
 
@@ -715,6 +713,7 @@ for (b in names(bufferPolys)) {
             paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261110.csv"))
 }
 
+# RUNNING LEFT OFF HERE ######
 
 ################################################################################
 # 7) add USGS CONUS GAP 2011 landcover type
