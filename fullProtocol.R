@@ -36,28 +36,28 @@ library(mgcv)
 # 4) Site buffers - 473
 # 5) Remove burned areas - 500
 # 6) Get 1 km habitat variables - 567
-# 7) add USGS CONUS GAP 2011 landcover type - 684
-# 8) which points are too close to each other? - 716
-# 9) remove species with insufficient data - 786
-# 10) make a nice map - 838
-# 11) check for colinearity - 876
-# 12) Niche Space PCA - 986
-# 13) PCA loadings (supp figures) - 1006
-# 14) render landcover labels - 1075
-# 15) test plot for errored species polygons - 1158
-# 16) Species Niche Polygons - 1197
-# 17) plot 2 species niche overlap - 1296
-# 18) Calculate all pairwise overlaps - 1424
-# 19) Species niche Areas & Percent overlap - 1468
-# 20) calculate Range overlaps - 1494
-# 21) Range Overlap Maps - 1643
-# 22) Combine range overlaps and niche overlaps - 1748
-# 23) plot range vs niche overlap - 1782
-# 24) Mixed effects model - 1874
-# 25) permutation test - 2028
-# 26) Figure 4 niche areas - 2071
-# 27) Figure 5 - matrix - 2087
-# 28) Species details supp table - 2226
+# 7) add USGS CONUS GAP 2011 landcover type - 720
+# 8) which points are too close to each other? - 752
+# 9) remove species with insufficient data - 822
+# 10) make a nice map - 874
+# 11) check for colinearity - 912
+# 12) Niche Space PCA - 1022
+# 13) PCA loadings (supp figures) - 1042
+# 14) render landcover labels - 1111
+# 15) test plot for errored species polygons - 1194
+# 16) Species Niche Polygons - 1233
+# 17) plot 2 species niche overlap - 1332
+# 18) Calculate all pairwise overlaps - 1460
+# 19) Species niche Areas & Percent overlap - 1504
+# 20) calculate Range overlaps - 1530
+# 21) Range Overlap Maps - 1679
+# 22) Combine range overlaps and niche overlaps - 1784
+# 23) plot range vs niche overlap - 1818
+# 24) Mixed effects model - 1910
+# 25) permutation test - 2064
+# 26) Figure 4 niche areas - 2107
+# 27) Figure 5 - matrix - 2123
+# 28) Species details supp table - 2262
 
 
 # working directory  -----------------------------------------------------------
@@ -633,6 +633,28 @@ rm(r)
 write_rds(BioCube_varsBuffers, "BioCube_varsBuffers_raw_20261110.rds")
 
 
+# snow and frost: no-data = 0 ---------------------------------------------------
+# 17 Nov 2026. In the CHELSA-BIOCLIM+ snow cover days (scd), snow water
+# equivalent (swe) and frost change frequency (fcf) layers, the no-data cells are
+# the warm, low-elevation areas (no snow / no frost-change events), and the files
+# contain no zeros. No-data is therefore treated as 0. These three layers are
+# re-extracted with no-data set to 0 before averaging, so a buffer that is partly
+# in a no-snow cell gets a correctly weighted mean. (Runs whether the loop above
+# was run or the raw file was loaded.)
+
+zeroFiles <- c("CA_Climate_CHELSA_scd_v2.tif", "CA_Climate_CHELSA_swe_v2.tif",
+               "CA_Climate_CHELSA_fcf_v2.tif")
+for (f in zeroFiles) {
+  r <- terra::rast(file.path(path_CA, f))[[1]]
+  r <- terra::ifel(is.na(r), 0, r)
+  for (b in names(vectPolys)) {
+    BioCube_varsBuffers[[b]][[f]] <- terra::extract(r, vectPolys[[b]], fun = mean,
+                                                    exact = TRUE, na.rm = TRUE)[, 2]
+  }
+}
+rm(r)
+
+
 # tidy variable names ----------------------------------------------------------
 # tidyNames.csv includes the resampled trait and canopy height layers (added by resampling.R)
 
@@ -654,6 +676,14 @@ sapply(BioCube_varsBuffers, function(x) sum(!names(x) %in% c("cell_unit", "long"
 
 BioCube_varsBuffers <- lapply(BioCube_varsBuffers, function(x) x[setdiff(names(x), "gsp")])
 
+# exclude winter habitat indices and phenology amplitude -------------------------
+# 17 Nov 2026. WHI_pFWOS, WHI_SCV, WHI_SSL (no-data at ~15 sites; these layers
+# have true zeros, so no-data is not 0) and AMP (no-data at ~8 sites). Dropping
+# these variables keeps those sites in the analysis.
+
+BioCube_varsBuffers <- lapply(BioCube_varsBuffers, function(x)
+  x[setdiff(names(x), c("WHI_pFWOS", "WHI_SCV", "WHI_SSL", "AMP"))])
+
 
 # merge with detections and remove sites with no foliar trait data -------------
 # Nitrogen is NA where the 1 km cell(s) under a buffer have no valid 30 m trait pixels
@@ -662,11 +692,17 @@ siteDetections_foliarTraits_BioCubeBuffers <- lapply(names(bufferPolys), functio
   x <- merge(siteDetectionsBuffers[[b]],
              BioCube_varsBuffers[[b]][setdiff(names(BioCube_varsBuffers[[b]]), c("long", "lat"))],
              by = "cell_unit")
-  x[!is.na(x$Nitrogen), ]
+  x <- x[!is.na(x$Nitrogen), ]
+  # remove any site with a remaining missing habitat value (1 site with missing
+  # SoilGrids bdod, clay, nitrogen and sand in the 50 and 150 m versions)
+  envVars <- setdiff(names(BioCube_varsBuffers[[b]]), c("cell_unit", "long", "lat"))
+  x[complete.cases(st_drop_geometry(x)[envVars]), ]
 })
 names(siteDetections_foliarTraits_BioCubeBuffers) <- names(bufferPolys)
 sapply(siteDetections_foliarTraits_BioCubeBuffers, nrow) # sites for 50, 150, 300 m (30 m traits were: 584, 578, 570)(now 600, 593, 580)
-sapply(siteDetections_foliarTraits_BioCubeBuffers, function(x) sum(is.na(st_drop_geometry(x)))) # NA values
+sapply(names(siteDetections_foliarTraits_BioCubeBuffers), function(b)       # NA habitat values, should be 0
+  sum(is.na(st_drop_geometry(siteDetections_foliarTraits_BioCubeBuffers[[b]])[
+    setdiff(names(BioCube_varsBuffers[[b]]), c("cell_unit", "long", "lat"))])))
 # NA values 50m 1410, 150m 1381, 300m 1307 
 
 # save -------------------------------------------------------------------------
