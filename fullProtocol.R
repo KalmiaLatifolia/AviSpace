@@ -36,28 +36,28 @@ library(mgcv)
 # 4) Site buffers - 474
 # 5) Remove burned areas - 501
 # 6) Get 1 km habitat variables - 568
-# 7) add USGS CONUS GAP 2011 landcover type - 719
-# 8) which points are too close to each other? - 751
-# 9) remove species with insufficient data - 821
-# 10) make a nice map - 869
-# 11) check for colinearity - 912
-# 12) Niche Space PCA - 1022
-# 13) PCA loadings (supp figures) - 1042
-# 14) render landcover labels - 1111
-# 15) test plot for errored species polygons - 1194
-# 16) Species Niche Polygons - 1233
-# 17) plot 2 species niche overlap - 1332
-# 18) Calculate all pairwise overlaps - 1460
-# 19) Species niche Areas & Percent overlap - 1504
-# 20) calculate Range overlaps - 1530
-# 21) Range Overlap Maps - 1679
-# 22) Combine range overlaps and niche overlaps - 1784
-# 23) plot range vs niche overlap - 1818
-# 24) Mixed effects model - 1910
-# 25) permutation test - 2064
-# 26) Figure 4 niche areas - 2107
-# 27) Figure 5 - matrix - 2123
-# 28) Species details supp table - 2262
+# 7) add USGS CONUS GAP 2011 landcover type - 718
+# 8) which points are too close to each other? - 750
+# 9) remove species with insufficient data - 820
+# 10) make a nice map - 868
+# 11) check for colinearity - 911
+# 12) Niche Space PCA - 1024
+# 13) PCA loadings (supp figures) - 1071
+# 14) render landcover labels - 1126
+# 15) test plot for errored species polygons - 1209
+# 16) Species Niche Polygons - 1248
+# 17) plot 2 species niche overlap - 1347
+# 18) Calculate all pairwise overlaps - 1475
+# 19) Species niche Areas & Percent overlap - 1519
+# 20) calculate Range overlaps - 1545
+# 21) Range Overlap Maps - 1694
+# 22) Combine range overlaps and niche overlaps - 1799
+# 23) plot range vs niche overlap - 1833
+# 24) Mixed effects model - 1925
+# 25) permutation test - 2079
+# 26) Figure 4 niche areas - 2122
+# 27) Figure 5 - matrix - 2138
+# 28) Species details supp table - 2277
 
 
 # working directory  -----------------------------------------------------------
@@ -921,7 +921,7 @@ corThreshold <- 0.95
 
 # all environmental variables
 spatVarsAll <- setdiff(names(BioCube_varsBuffers[["150"]]), c("cell_unit", "long", "lat"))
-length(spatVarsAll) # 124 = 94 BioCube layers + 14 trait means + 14 trait SDs + 2 canopy height
+length(spatVarsAll) # 119 = 89 BioCube layers (94 minus gsp, WHI_pFWOS, WHI_SCV, WHI_SSL, AMP) + 14 trait means + 14 trait SDs + 2 canopy height
 # (30 m version: 14 traits + 96 BioCube layers = 110 vars)
 
 # pairs of variables with |r| above the threshold (each pair listed once)
@@ -1008,8 +1008,7 @@ for (b in names(siteDetections_foliarTraits_BioCubeBuffers)) {
   write_csv(x, paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261119.csv"))
 }
 
-# TODO 06 Nov 2026: sections 12 onward still use a single table. Until they are
-# converted, they use the 150 m version.
+# 150 m version (used for the landcover labels in the PCA plots, section 14)
 siteDetections_foliarTraits_BioCube <- siteDetections_foliarTraits_BioCubeBuffers[["150"]]
 
 
@@ -1024,91 +1023,97 @@ lapply(siteDetections_foliarTraits_BioCubeBuffers, function(x) {
 ################################################################################
 # 12) Niche Space PCA
 ################################################################################
+# 19 Nov 2026. Run separately for each buffer version. Species and habitat
+# variables are selected by name (spatVars from section 11), not by position.
+# PC signs are arbitrary, so PC1/PC2 may be mirrored between buffer sizes; this
+# does not affect areas or overlaps.
 
-# convert to count data --------------------------------------------------------
-names(siteDetections_foliarTraits_BioCube)
-roundedCounts <- siteDetections_foliarTraits_BioCube %>% mutate(across(5:96, ~ round(.)))  # double check these are species columns. maybe multiplying by 7 (1 detection per week) to keep less vocal species # round(. * 7)
-roundedCounts$geometry <- NULL
+# species columns (species kept in section 9) -----------------------------------
+speciesCols <- intersect(names(siteDetections_foliarTraits_BioCubeBuffers[["150"]]),
+                         unique(siteCounts$common_name))
+length(speciesCols) # 92 species
 
-# name vars --------------------------------------------------------------------
-species <- colnames(roundedCounts)[5:96]
-spatVars <- colnames(roundedCounts)[97:182]
+# convert to count data, calculate PCA, add PCs ---------------------------------
+# rounding detection rates to whole numbers for the kernel density step
+# (multiply by 100 to keep 2 decimal places: round(. * 100))
 
-# calculate PCA ----------------------------------------------------------------
-traitsPCA <-  prcomp(roundedCounts[,spatVars], center=TRUE, scale = TRUE)
-# test <- PCA(roundedCounts[,spatVars])
-# add PCs to rounded dataframe
-roundedPCA <- cbind(roundedCounts, traitsPCA$x)
+roundedCountsBuffers <- lapply(siteDetections_foliarTraits_BioCubeBuffers, function(x) {
+  x <- x %>% mutate(across(all_of(speciesCols), ~ round(. *100)))
+  x$geometry <- NULL
+  x
+})
+
+traitsPCABuffers <- lapply(roundedCountsBuffers, function(x)
+  prcomp(x[, spatVars], center = TRUE, scale = TRUE))
+
+roundedPCABuffers <- lapply(names(roundedCountsBuffers), function(b)
+  cbind(roundedCountsBuffers[[b]], traitsPCABuffers[[b]]$x))
+names(roundedPCABuffers) <- names(roundedCountsBuffers)
+
+# variance explained by PC1-PC4, for each buffer size (%)
+sapply(traitsPCABuffers, function(p) round(100 * summary(p)$importance["Proportion of Variance", 1:min(4, ncol(p$x))], 1))
+
+# save -------------------------------------------------------------------------
+for (b in names(traitsPCABuffers)) {
+  write_rds(traitsPCABuffers[[b]], paste0("traitsPCA_buffer", b, "m_20261119.rds"))
+  write_rds(roundedPCABuffers[[b]], paste0("roundedPCA_buffer", b, "m_20261119.rds"))
+}
 
 
 ################################################################################
 # 13) PCA loadings (supp figures)
 ################################################################################
+# 19 Nov 2026. Run for each buffer version; figure file names include the buffer size.
 
+# variable categories (one row per variable: tidyNames.csv lists the trait and
+# canopy height names twice, for the 30 m and 1 km files)
+tidyCat <- read_csv("tidyNames.csv") %>% distinct(VariableName, Category)
 
-# what are the PCA loadings? ---------------------------------------------------
-loadings <- traitsPCA$rotation[, 1:4]  # PC1 loadings
-loadings <- as.data.frame(loadings)
-loadings$variable <- rownames(loadings)
-rownames(loadings) <- NULL
+catColors <- c("#309898", "#8A2D3B", "#A0C878", "#27548A", "#F5C45E", "#644A07", "#8E7DBE")
 
-# get biocube category
-tidy <- read_csv("tidyNames.csv")
-tidy$fileName <- NULL
-loadings <- merge(loadings, tidy, by.x= "variable", by.y= "VariableName")
-loadings$FileName <- NULL
+plot_loading <- function(loadings, pc) {
+  ggplot(loadings, aes(x = reorder(variable, abs(.data[[pc]])), y = abs(.data[[pc]]), fill = Category)) +
+    scale_fill_manual(values = catColors) +
+    geom_col() + coord_flip() +
+    xlab("Habitat Variable") +
+    ylab(paste(pc, "loading (absolute value)")) +
+    theme_minimal()
+}
 
-# plot loadings - supplemental figure 1
-ggplot(loadings, aes(x=reorder(variable, abs(PC1)), y=abs(PC1), fill=Category)) +
-  scale_fill_manual(values = c("#309898", "#8A2D3B", "#A0C878", "#27548A", "#F5C45E", "#644A07", "#8E7DBE")) +
-  geom_col() + coord_flip() +
-  xlab("Habitat Variable") +
-  ylab("PC1 loading (absolute value)") +
-  theme_minimal()
-ggsave("Loading_PC1_20250624.pdf", height=10, width=7)
+loadingsBuffers <- list()
+for (b in names(traitsPCABuffers)) {
+  p <- traitsPCABuffers[[b]]
 
-# supplemental figure 2
-ggplot(loadings, aes(x=reorder(variable, abs(PC2)), y=abs(PC2), fill=Category)) +
-  scale_fill_manual(values = c("#309898", "#8A2D3B", "#A0C878", "#27548A", "#F5C45E", "#644A07", "#8E7DBE")) +
-  geom_col() + coord_flip() +
-  xlab("Habitat Variable") +
-  ylab("PC2 loading (absolute value)") +
-  theme_minimal()
-ggsave("Loading_PC2_20250624.pdf", height=10, width=7)
+  # what are the PCA loadings? -------------------------------------------------
+  loadings <- as.data.frame(p$rotation[, 1:4])
+  loadings$variable <- rownames(loadings)
+  rownames(loadings) <- NULL
+  loadings <- merge(loadings, tidyCat, by.x = "variable", by.y = "VariableName", all.x = TRUE)
+  stopifnot(nrow(loadings) == length(spatVars), !anyNA(loadings$Category))
+  loadingsBuffers[[b]] <- loadings
 
-# supplemental figure 3
-ggplot(loadings, aes(x=reorder(variable, abs(PC3)), y=abs(PC3), fill=Category)) +
-  scale_fill_manual(values = c("#309898", "#8A2D3B", "#A0C878", "#27548A", "#F5C45E", "#644A07", "#8E7DBE")) +
-  geom_col() + coord_flip() +
-  xlab("Habitat Variable") +
-  ylab("PC3 loading (absolute value)") +
-  theme_minimal()
-ggsave("Loading_PC3_20260313.pdf", height=10, width=7)
+  # loadings plots PC1-PC4 - supplemental figures 1-4
+  for (pc in paste0("PC", 1:4)) {
+    print(plot_loading(loadings, pc))
+    ggsave(paste0("Loading_", pc, "_buffer", b, "m_20261119.pdf"), height = 10, width = 7)
+  }
 
-# supplemental figure 4
-ggplot(loadings, aes(x=reorder(variable, abs(PC4)), y=abs(PC4), fill=Category)) +
-  scale_fill_manual(values = c("#309898", "#8A2D3B", "#A0C878", "#27548A", "#F5C45E", "#644A07", "#8E7DBE")) +
-  geom_col() + coord_flip() +
-  xlab("Habitat Variable") +
-  ylab("PC4 loading (absolute value)") +
-  theme_minimal()
-ggsave("Loading_PC4_20260313.pdf", height=10, width=7)
+  # visualize eigenvectors - supplemental figures 5 and 6
+  print(fviz_pca_var(p, axes = c(1, 2)))
+  ggsave(paste0("Eigenvectors_PC12_buffer", b, "m_20261119.pdf"), width = 10, height = 10)
+  print(fviz_pca_var(p, axes = c(3, 4)))
+  ggsave(paste0("Eigenvectors_PC34_buffer", b, "m_20261119.pdf"), width = 10, height = 10)
+}
 
-# visualize eigenvectors - supplemental figure 5
-fviz_pca_var(traitsPCA, axes = c(1, 2))
-ggsave("Eigenvectors_PC12.pdf", width=10, height=10)
-
-# supplemental figure 6
-fviz_pca_var(traitsPCA, axes = c(3, 4))
-ggsave("Eigenvectors_PC34.pdf", width=10, height=10)
-
-fviz_contrib(traitsPCA, choice="var", axes = 1, sort.val ="asc") + 
-  coord_flip() + labs(title = "Contribution of variables to PC1 (%)") +
+# contributions of variables to PC1 and PC2 (150 m)
+fviz_contrib(traitsPCABuffers[["150"]], choice="var", axes = 1, sort.val ="asc") + 
+  coord_flip() + labs(title = "Contribution of variables to PC1 (%), 150 m") +
   ylab("Habitat")
 
-fviz_contrib(traitsPCA, choice="var", axes = 2, sort.val ="asc") + 
-  coord_flip() + labs(title = "Contribution of variables to PC2 (%)") +
+fviz_contrib(traitsPCABuffers[["150"]], choice="var", axes = 2, sort.val ="asc") + 
+  coord_flip() + labs(title = "Contribution of variables to PC2 (%), 150 m") +
   ylab("Habitat")
+
 
 ################################################################################
 # 14) render landcover labels
