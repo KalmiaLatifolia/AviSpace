@@ -743,9 +743,9 @@ siteDetections_foliarTraits_BioCubeBuffers <- lapply(siteDetections_foliarTraits
   x
 })
 sapply(siteDetections_foliarTraits_BioCubeBuffers, nrow) # sites with a landcover type, 50, 150, 300 m
-# 584 obs 50m
-# 578 obs 150m
-# 570 obs 300m
+# 599 obs 50m
+# 592 obs 150m
+# 580 obs 300m
 
 ################################################################################
 # 8) which points are too close to each other?
@@ -786,16 +786,16 @@ closeSites <- lapply(siteDetections_foliarTraits_BioCubeBuffers, drop_close_site
 lapply(closeSites, `[[`, "pairs") # pairs < 500 m apart and the site dropped from each
 siteDetections_foliarTraits_BioCubeBuffers <- lapply(closeSites, `[[`, "x")
 sapply(siteDetections_foliarTraits_BioCubeBuffers, nrow) # sites kept, 50, 150, 300 m
-# 581 obs 50m
-# 575 obs 150m
-# 567 obs 300m
+# 595 obs 50m
+# 588 obs 150m
+# 576 obs 300m
 
 # how many unique cells? --------------------------------------------------------
 sapply(siteDetections_foliarTraits_BioCubeBuffers,
        function(x) length(unique(str_extract(x$cell_unit, ".*(?=_)")))) # 285 before (150 m)
-# 289 obs 50m
-# 285 obs 150m
-# 279 obs 300m
+# 293 obs 50m
+# 291 obs 150m
+# 282 obs 300m
 
 # average distance between ARUs in the same cell? ------------------------------
 # California Albers (EPSG 3310) so distances are true meters
@@ -814,14 +814,14 @@ avg_cell_distance <- function(x) {
 }
 sapply(siteDetections_foliarTraits_BioCubeBuffers, avg_cell_distance) # meters (1206 before, Web Mercator)
 # 951m 50m
-# 950m 150m
-# 948m 300m
+# 949m 150m
+# 945m 300m
 
 ################################################################################
 # 9) remove species with insufficient data
 ################################################################################
 # 06 Nov 2026. Automated, run separately for each buffer version.
-# Remove species detected at 30 or fewer sites or with fewer than 300 total detections
+# Keep species detected at more than 30 sites and more than 300 total detections
 # (same cut-offs as the curve fitting in section 3)
 # (raw counts on 7 h days, siteCounts from section 3, at the sites in each version).
 
@@ -834,7 +834,7 @@ count_species <- function(x) {
   out <- data.frame(common_name = spCols, totalSites = colSums(x[spCols] != 0))
   out <- merge(out, dets, by = "common_name", all.x = TRUE)
   out$totalDetections[is.na(out$totalDetections)] <- 0
-  out$keep <- out$totalSites > 30 & out$totalDetections >= 300
+  out$keep <- out$totalSites > 30 & out$totalDetections > 300
   out[order(out$totalSites), ]
 }
 
@@ -845,6 +845,7 @@ sapply(speciesCounts, function(s) sum(s$keep)) # species kept, 50, 150, 300 m
 # Wild Turkey, Brown-headed Cowbird, Vaux's Swift, Yellow-breasted Chat, 
 # Brewer's Sparrow, Lawrence's Goldfinch, Sooty Grouse
 # all buffer sizes kept 92 species
+# CORRECTION - 50m buffer keeps Lawrence's Goldfinch
 
 siteDetections_foliarTraits_BioCubeBuffers <- lapply(names(speciesCounts), function(b) {
   drop <- speciesCounts[[b]]$common_name[!speciesCounts[[b]]$keep]
