@@ -31,15 +31,15 @@ library(mgcv)
 
 # Table of contents ------------------------------------------------------------
 # 1) Processing ARU bioacoustic data - 73
-# 2) Species complexes and cross-identification - 146
-# 3) Adjust detection rates for day-of-year and year - 243
-# 4) Site buffers - 473
-# 5) Remove burned areas - 500
-# 6) Get 1 km habitat variables - 567
-# 7) add USGS CONUS GAP 2011 landcover type - 720
-# 8) which points are too close to each other? - 752
-# 9) remove species with insufficient data - 822
-# 10) make a nice map - 874
+# 2) Species complexes and cross-identification - 147
+# 3) Adjust detection rates for day-of-year and year - 244
+# 4) Site buffers - 474
+# 5) Remove burned areas - 501
+# 6) Get 1 km habitat variables - 568
+# 7) add USGS CONUS GAP 2011 landcover type - 719
+# 8) which points are too close to each other? - 751
+# 9) remove species with insufficient data - 821
+# 10) make a nice map - 869
 # 11) check for colinearity - 912
 # 12) Niche Space PCA - 1022
 # 13) PCA loadings (supp figures) - 1042
@@ -713,7 +713,6 @@ for (b in names(bufferPolys)) {
             paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261110.csv"))
 }
 
-# RUNNING LEFT OFF HERE ######
 
 ################################################################################
 # 7) add USGS CONUS GAP 2011 landcover type
@@ -820,9 +819,10 @@ sapply(siteDetections_foliarTraits_BioCubeBuffers, avg_cell_distance) # meters (
 ################################################################################
 # 9) remove species with insufficient data
 ################################################################################
-# 06 Nov 2026. Automated, run separately for each buffer version.
+# 19 Nov 2026. Automated, run separately for each buffer version.
 # Keep species detected at more than 30 sites and more than 300 total detections
-# (same cut-offs as the curve fitting in section 3)
+# (as the curve fitting in section 3, except that section 3 fits species with
+# 300 or more detections; a species with exactly 300 gets a curve there but is removed here)
 # (raw counts on 7 h days, siteCounts from section 3, at the sites in each version).
 
 count_species <- function(x) {
@@ -845,8 +845,8 @@ sapply(speciesCounts, function(s) sum(s$keep)) # species kept, 50, 150, 300 m
 # Wild Turkey, Brown-headed Cowbird, Vaux's Swift, Yellow-breasted Chat, 
 # Brewer's Sparrow, Lawrence's Goldfinch, Sooty Grouse
 # all buffer sizes kept 92 species
-# CORRECTION - 50m buffer keeps Lawrence's Goldfinch
 
+# drop those species from the main dataset
 siteDetections_foliarTraits_BioCubeBuffers <- lapply(names(speciesCounts), function(b) {
   drop <- speciesCounts[[b]]$common_name[!speciesCounts[[b]]$keep]
   siteDetections_foliarTraits_BioCubeBuffers[[b]][setdiff(names(siteDetections_foliarTraits_BioCubeBuffers[[b]]), drop)]
@@ -864,15 +864,14 @@ for (b in names(siteDetections_foliarTraits_BioCubeBuffers)) {
   write_csv(x, paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261106.csv"))
 }
 
+################################################################################
+# 10) make a nice map
+################################################################################
+
 # 150 m version, used for the site map in section 10
 siteDetections_foliarTraits_BioCube <- siteDetections_foliarTraits_BioCubeBuffers[["150"]]
 speciesSites <- speciesCounts[["150"]][c("common_name", "totalSites")]
 speciesDetections <- speciesCounts[["150"]][c("common_name", "totalDetections")]
-
-
-################################################################################
-# 10) make a nice map
-################################################################################
 
 # update sites
 sites <- siteDetections_foliarTraits_BioCube[c("cell_unit", "long", "lat")]
@@ -981,7 +980,8 @@ check_cor() # all variables (150 m)
 removeVars <- c("bio16", "bio09", "gdd5", "bio11", "bio01", "bio05", "ngd10", 
                 "gdd0", "bio10", "bio08", "PETDryQuart", "bio06", "annualPET", 
                 "TRI", "swe", "gdd10", "ngd5", "PETseas", "PETWarmQuart", 
-                "thermInd", "bio19", "Starch", "ngd0", "Sulfur", "DTM_std", "bio18")
+                "thermInd", "bio19", "Starch", "ngd0", "Sulfur", "DTM_std", 
+                "bio18", "Nitrogen", "Sugar_std")
 check_cor(removeVars) # rerun after each addition to removeVars
 removeVars[!removeVars %in% spatVarsAll] # should be empty (catches typos in names)
 
@@ -989,7 +989,7 @@ siteDetections_foliarTraits_BioCubeBuffers <- lapply(siteDetections_foliarTraits
                                                      function(x) x[setdiff(names(x), removeVars)])
 spatVars <- setdiff(spatVarsAll, removeVars)
 length(spatVars) # variables used in the PCA
-# length 87 # now 84
+# length 87 # now 91
 
 # check: no remaining pairs above the threshold in any buffer version
 lapply(siteDetections_foliarTraits_BioCubeBuffers, find_high_cor, vars = spatVars) # should all be empty
@@ -997,14 +997,15 @@ lapply(siteDetections_foliarTraits_BioCubeBuffers, find_high_cor, vars = spatVar
 # LMA and Sulfur -0.952, remove sulfur
 # DTM_std and Slope, 0.952, remove DTM_std
 # bio17 and bio18 0.951, remove bio18
+# 300m Sugar_std and NSC_std, 0.9508
 
 # save updated version
 for (b in names(siteDetections_foliarTraits_BioCubeBuffers)) {
   write_rds(siteDetections_foliarTraits_BioCubeBuffers[[b]],
-            paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261106.rds"))
+            paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261119.rds"))
   x <- siteDetections_foliarTraits_BioCubeBuffers[[b]]
   x$geometry <- NULL
-  write_csv(x, paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261106.csv"))
+  write_csv(x, paste0("siteDetections_foliarTraits_BioCube_buffer", b, "m_20261119.csv"))
 }
 
 # TODO 06 Nov 2026: sections 12 onward still use a single table. Until they are
@@ -1017,6 +1018,8 @@ lapply(siteDetections_foliarTraits_BioCubeBuffers, function(x) {
   n <- colSums(is.na(x[spatVars])); n[n > 0]
 })
 # no NAs. good to go. 
+
+# RUNNING LEFT OFF HERE ######
 
 ################################################################################
 # 12) Niche Space PCA
