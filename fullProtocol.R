@@ -42,22 +42,22 @@ library(mgcv)
 # 10) make a nice map - 868
 # 11) check for colinearity - 911
 # 12) Niche Space PCA - 1024
-# 13) PCA loadings (supp figures) - 1071
-# 14) render landcover labels - 1126
-# 15) test plot for errored species polygons - 1209
-# 16) Species Niche Polygons - 1248
-# 17) plot 2 species niche overlap - 1347
-# 18) Calculate all pairwise overlaps - 1475
-# 19) Species niche Areas & Percent overlap - 1519
-# 20) calculate Range overlaps - 1545
-# 21) Range Overlap Maps - 1694
-# 22) Combine range overlaps and niche overlaps - 1799
-# 23) plot range vs niche overlap - 1833
-# 24) Mixed effects model - 1925
-# 25) permutation test - 2079
-# 26) Figure 4 niche areas - 2122
-# 27) Figure 5 - matrix - 2138
-# 28) Species details supp table - 2277
+# 13) PCA loadings (supp figures) - 1064
+# 14) render landcover labels - 1119
+# 15) test plot for errored species polygons - 1177
+# 16) Species Niche Polygons - 1216
+# 17) plot 2 species niche overlap - 1315
+# 18) Calculate all pairwise overlaps - 1443
+# 19) Species niche Areas & Percent overlap - 1487
+# 20) calculate Range overlaps - 1513
+# 21) Range Overlap Maps - 1662
+# 22) Combine range overlaps and niche overlaps - 1767
+# 23) plot range vs niche overlap - 1801
+# 24) Mixed effects model - 1893
+# 25) permutation test - 2047
+# 26) Figure 4 niche areas - 2090
+# 27) Figure 5 - matrix - 2106
+# 28) Species details supp table - 2245
 
 
 # working directory  -----------------------------------------------------------
@@ -1118,85 +1118,60 @@ fviz_contrib(traitsPCABuffers[["150"]], choice="var", axes = 2, sort.val ="asc")
 ################################################################################
 # 14) render landcover labels
 ################################################################################
+# 19 Nov 2026. Run for each buffer version. Sites are colored by GAP landcover
+# type, and three on-figure labels (Oak, Pine, Mixed Conifer) are placed at the
+# mean PC1/PC2 position of the sites in those landcover groups, so the labels
+# follow the PCA of each buffer size (PC signs can differ between buffers - 300m buffer is mirrored to 50 and 150m).
 
-# the plot
-landcover_pca_plot <- fviz_pca_ind(traitsPCA,
-                                   label = "none",
-                                   habillage = siteDetections_foliarTraits_BioCube$landcover_type) +
-  guides(color = guide_legend(ncol = 1),
-         fill = guide_legend(ncol = 1),
-         shape = guide_legend(ncol = 1)) +
-  geom_text(aes(x = -7, y = -8, label = "Oak"), inherit.aes = FALSE) +
-  geom_text(aes(x =  6, y = -2, label = "Pine"), inherit.aes = FALSE) +
-  geom_text(aes(x =  0, y = 1, label = "Mixed Conifer"), inherit.aes = FALSE) +
-  ggtitle(NULL)
-landcover_pca_plot
+# landcover group for the on-figure labels
+lc_label <- function(lc) dplyr::case_when(
+  grepl("Oak", lc)           ~ "Oak",   # checked first: "Blue Oak-Foothill Pine" counts as oak
+  grepl("Pine", lc)          ~ "Pine",
+  grepl("Mixed Conifer", lc) ~ "Mixed Conifer",
+  TRUE                       ~ NA_character_)
 
-# keep it for later as a supp figure
-ggsave("landcover_pca_20250624.PDF", plot=landcover_pca_plot, height=7, width=12)
+landcoverLabelsBuffers <- list()
+for (b in names(traitsPCABuffers)) {
+  p  <- traitsPCABuffers[[b]]
+  lc <- roundedCountsBuffers[[b]]$landcover_type # same rows, same order as the PCA
 
-# plot pc3 and pc4 - supplemental figure 7
-fviz_pca_ind(traitsPCA,
-             axes = c(2, 3),
-             label = "none",
-             habillage = siteDetections_foliarTraits_BioCube$landcover_type) +
-  guides(color = guide_legend(ncol = 1),
-         fill = guide_legend(ncol = 1),
-         shape = guide_legend(ncol = 1)) +
-  ggtitle(NULL)
+  # label positions: mean PC1/PC2 of the sites in each group
+  lcLabels <- data.frame(p$x[, 1:2], label = lc_label(lc)) %>%
+    filter(!is.na(label)) %>%
+    group_by(label) %>%
+    dplyr::summarise(x = mean(PC1), y = mean(PC2))
+  landcoverLabelsBuffers[[b]] <- lcLabels
 
-make_pca_plot <- function(ax) {
-  fviz_pca_ind(traitsPCA,
-               axes = ax,
-               label = "none",
-               habillage = siteDetections_foliarTraits_BioCube$landcover_type) +
-    ggtitle(paste0("PC", ax[1], " vs PC", ax[2])) +
-    theme(legend.position = "none")
+  # the plot
+  landcover_pca_plot <- fviz_pca_ind(p,
+                                     label = "none",
+                                     habillage = lc) +
+    guides(color = guide_legend(ncol = 1),
+           fill = guide_legend(ncol = 1),
+           shape = guide_legend(ncol = 1)) +
+    geom_text(data = lcLabels, aes(x = x, y = y, label = label), inherit.aes = FALSE) +
+    ggtitle(NULL)
+  print(landcover_pca_plot)
+  ggsave(paste0("landcover_pca_buffer", b, "m_20261119.pdf"), plot = landcover_pca_plot, height = 7, width = 12)
+
+  # PC3 and PC4 panels - supplemental figure 7
+  make_pca_plot <- function(ax) {
+    fviz_pca_ind(p,
+                 axes = ax,
+                 label = "none",
+                 habillage = lc) +
+      ggtitle(paste0("PC", ax[1], " vs PC", ax[2])) +
+      theme(legend.position = "none")
+  }
+  print((make_pca_plot(c(4,1)) | make_pca_plot(c(3,1))) /
+          (make_pca_plot(c(4,2)) | make_pca_plot(c(3,2))) /
+          (make_pca_plot(c(4,3)) | patchwork::plot_spacer()))
+  ggsave(paste0("landcover_pca_PC34panels_buffer", b, "m_20261119.pdf"), height = 10, width = 10)
 }
 
-p1 <- make_pca_plot(c(4,1))
-p2 <- make_pca_plot(c(3,1))
-p3 <- make_pca_plot(c(4,2))
-p4 <- make_pca_plot(c(3,2))
-p5 <- make_pca_plot(c(4,3))
+# 150 m label positions, in the format used by the overlap plots in section 17
+landcover_centroids <- dplyr::rename(landcoverLabelsBuffers[["150"]], Groups = label)
 
-(p1 | p2) /
-  (p3 | p4) /
-  (p5 | patchwork::plot_spacer())
-ggsave("landcover_pca_PC34panels_20260313.pdf", height=10, width=10)
-
-# extract data
-landcover_pca_scores <- as.data.frame(landcover_pca_plot$data)
-
-centroids <- aggregate(cbind(x, y) ~ Groups, data = landcover_pca_scores, FUN = mean)
-
-group_sizes <- landcover_pca_scores %>%
-  count(Groups) %>%
-  rename(size = n)
-
-landcover_centroids <- left_join(centroids, group_sizes, by = "Groups")
-
-# pick which landcover labels to keep ------------------------------------------
-# these are all types which occur 10+ times in the data
-landcover_centroids <- landcover_centroids %>%
-  filter(Groups %in% c("Mediterranean California Mesic Mixed Conifer Forest and Woodland",
-                       "Mediterranean California Dry-Mesic Mixed Conifer Forest and Woodland",
-                       #"California Lower Montane Blue Oak-Foothill Pine Woodland and Savanna",
-                       "California Central Valley Mixed Oak Savanna",
-                       "Mediterranean California Red Fir Forest",
-                       "California Montane Jeffrey Pine-(Ponderosa Pine) Woodland",
-                       "Harvested Forest - Northwestern Conifer Regeneration",
-                       "Sierra Nevada Subalpine Lodgepole Pine Forest and Woodland"))
-
-# rename with shorter names
-landcover_centroids$Groups <- as.character(landcover_centroids$Groups)
-landcover_centroids$Groups[landcover_centroids$Groups == "Mediterranean California Mesic Mixed Conifer Forest and Woodland"] <- "Mesic Mixed Conifer Forest and Woodland"
-landcover_centroids$Groups[landcover_centroids$Groups == "Mediterranean California Dry-Mesic Mixed Conifer Forest and Woodland"] <- "Dry-Mesic Mixed Conifer Forest and Woodland"
-landcover_centroids$Groups[landcover_centroids$Groups == "California Lower Montane Blue Oak-Foothill Pine Woodland and Savanna"] <- "Lower Montane Blue Oak-Foothill Pine Woodland and Savanna"
-landcover_centroids$Groups[landcover_centroids$Groups == "California Central Valley Mixed Oak Savanna"] <- "Mixed Oak Savanna"
-landcover_centroids$Groups[landcover_centroids$Groups == "Mediterranean California Red Fir Forest"] <- "Red Fir Forest"
-landcover_centroids$Groups[landcover_centroids$Groups == "California Montane Jeffrey Pine-(Ponderosa Pine) Woodland"] <- "Montane Jeffrey Pine-(Ponderosa Pine) Woodland"
-landcover_centroids$Groups[landcover_centroids$Groups == "Sierra Nevada Subalpine Lodgepole Pine Forest and Woodland"] <- "Subalpine Lodgepole Pine Forest and Woodland"
 
 ################################################################################
 # 15) test plot for errored species polygons
