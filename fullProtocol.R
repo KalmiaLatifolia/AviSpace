@@ -1035,10 +1035,9 @@ length(speciesCols) # 92 species
 
 # convert to count data, calculate PCA, add PCs ---------------------------------
 # rounding detection rates to whole numbers for the kernel density step
-# (multiply by 100 to keep 2 decimal places: round(. * 100))
 
 roundedCountsBuffers <- lapply(siteDetections_foliarTraits_BioCubeBuffers, function(x) {
-  x <- x %>% mutate(across(all_of(speciesCols), ~ round(. *100)))
+  x <- x %>% mutate(across(all_of(speciesCols), ~ round(.)))
   x$geometry <- NULL
   x
 })
@@ -1051,7 +1050,8 @@ roundedPCABuffers <- lapply(names(roundedCountsBuffers), function(b)
 names(roundedPCABuffers) <- names(roundedCountsBuffers)
 
 # variance explained by PC1-PC4, for each buffer size (%)
-sapply(traitsPCABuffers, function(p) round(100 * summary(p)$importance["Proportion of Variance", 1:min(4, ncol(p$x))], 1))
+sapply(traitsPCABuffers, function(p) round(100 * summary(p)$importance["Proportion of Variance", 1:min(10, ncol(p$x))], 1))
+# PC1 23, PC2 18, PC3 8, PC4 7, PC5 4, PC6 4, PC7 3, PC8 3, PC9, 2, PC10 2
 
 # save -------------------------------------------------------------------------
 for (b in names(traitsPCABuffers)) {
