@@ -42,22 +42,22 @@ library(ks)      # weighted kernel density (section 15)
 # 9) remove species with insufficient data - 828
 # 10) make a nice map - 876
 # 11) check for colinearity - 919
-# 12) Niche Space PCA - 1032
-# 13) PCA loadings (supp figures) - 1073
-# 14) render landcover labels - 1152
-# 15) Species acoustic-use space: weighted 4-D kernel density - 1241
-# 16) plot 2 species niche overlap - 1398
-# 17) Calculate all pairwise overlaps - 1526
-# 18) Species niche Areas & Percent overlap - 1570
-# 19) calculate Range overlaps - 1596
-# 20) Range Overlap Maps - 1745
-# 21) Combine range overlaps and niche overlaps - 1850
-# 22) plot range vs niche overlap - 1884
-# 23) Mixed effects model - 1976
-# 24) permutation test - 2130
-# 25) Figure 4 niche areas - 2173
-# 26) Figure 5 - matrix - 2189
-# 27) Species details supp table - 2328
+# 12) Niche Space PCA - 1030
+# 13) PCA loadings (supp figures) - 1071
+# 14) render landcover labels - 1150
+# 15) Species acoustic-use space: weighted 4-D kernel density - 1239
+# 16) plot 2 species acoustic-use space overlap (test plot) - 1398
+# 17) Calculate all pairwise overlaps - 1477
+# 18) Species niche Areas & Percent overlap - 1521
+# 19) calculate Range overlaps - 1547
+# 20) Range Overlap Maps - 1696
+# 21) Combine range overlaps and niche overlaps - 1801
+# 22) plot range vs niche overlap - 1835
+# 23) Mixed effects model - 1927
+# 24) permutation test - 2081
+# 25) Figure 4 niche areas - 2124
+# 26) Figure 5 - matrix - 2140
+# 27) Species details supp table - 2279
 
 
 # working directory  -----------------------------------------------------------
@@ -1395,132 +1395,83 @@ speciesPolygons <- polygonsPC12Buffers[["150"]]
 
 
 ################################################################################
-# 16) plot 2 species niche overlap
+# 16) plot 2 species acoustic-use space overlap (test plot)
 ################################################################################
+# 23 Nov 2026. Checks the 2-D polygons from section 15 for any pair of species.
+# Panels show PC1 x PC2 and PC3 x PC4. Axes use equal units (1 PC unit is the
+# same length on both axes), which is how areas and volumes were calculated;
+# PC1 looks longer than PC2 because its scores are more spread out.
+# The caption gives 2-D areas, 4-D volumes and Jaccard % overlap.
 
-# pick my favorite eigenvectors ------------------------------------------------
-selected_vars <- c("Nitrogen", "LMA", "Phenolics", "Cellulose", "Chlorophylls", "Lignin")
+# choose buffer and species ----------------------------------------------------
+b        <- "150"
+Species1 <- "Hermit Thrush"
+Species2 <- "Swainson's Thrush"
+sort(speciesCols)
 
-# Get the eigenvalues (variances)
-eig_values <- traitsPCA$sdev^2
+# colors as in the previous draft
+col1 <- "#25b9be"; col2 <- "#e41a1c"; colOverlap <- "#8849a5"
 
-# Scale var_data by sqrt of eigenvalues
-var_data <- as.data.frame(traitsPCA$rotation)
-var_data$PC1 <- var_data$PC1 * sqrt(eig_values[1])
-var_data$PC2 <- var_data$PC2 * sqrt(eig_values[2])
-var_data$label <- rownames(var_data)
+# polygons, overlaps and numbers -----------------------------------------------
+pct <- round(100 * summary(traitsPCABuffers[[b]])$importance["Proportion of Variance", 1:4], 1)
+sites <- as.data.frame(traitsPCABuffers[[b]]$x[, 1:4])
 
-# pick your species ------------------------------------------------------------
-species <- colnames(roundedCounts)[5:96]
-sort(species)
-Species1 <- "Acorn.Woodpecker"
-Species2 <- "California.Scrub.Jay"
+overlap_2D <- function(polys) {
+  p1 <- st_make_valid(st_geometry(filter(polys, species == Species1)))
+  p2 <- st_make_valid(st_geometry(filter(polys, species == Species2)))
+  shared <- st_intersection(p1, p2)
+  a1 <- sum(st_area(p1)); a2 <- sum(st_area(p2))
+  aShared <- if (length(shared) == 0) 0 else sum(st_area(shared))
+  list(p1 = p1, p2 = p2, shared = shared, area1 = a1, area2 = a2,
+       jaccard = aShared / (a1 + a2 - aShared))
+}
+ov12 <- overlap_2D(polygonsPC12Buffers[[b]])
+ov34 <- overlap_2D(polygonsPC34Buffers[[b]])
 
-# get polygons -----------------------------------------------------------------
-species1_poly <- speciesPolygons %>% filter(species == Species1)
-species2_poly <- speciesPolygons %>% filter(species == Species2)
+vol <- volumesBuffers[[b]]
+ov4D <- overlapsBuffers[[b]] %>%
+  filter((species1 == Species1 & species2 == Species2) |
+           (species1 == Species2 & species2 == Species1))
+stopifnot(nrow(ov4D) == 1)
 
-# Ensure valid geometries
-species1_poly <- st_make_valid(species1_poly)
-species2_poly <- st_make_valid(species2_poly)
-
-# Calculate intersection
-overlap_poly <- st_intersection(species1_poly, species2_poly)
-
-# Plot with overlap ------------------------------------------------------------
-fviz_pca_ind(traitsPCA,
-             label = "none",
-             alpha.ind = 0.1) +
-  geom_sf(data = species1_poly,  inherit.aes = FALSE, alpha = 0.6, color = NA, aes(fill = Species1)) +
-  geom_sf(data = species2_poly,  inherit.aes = FALSE, alpha = 0.6, color = NA, aes(fill = Species2)) +
-  geom_sf(data = overlap_poly, inherit.aes = FALSE, alpha = 0.6, color = NA, fill = "#8849a5") +
-  scale_fill_manual(values = c("#25b9be", "#e41a1c")) +
-  #geom_segment(data = var_data[var_data$label %in% selected_vars,],
-   #            aes(x = 0, y = 0, xend = PC1 * 14, yend = PC2 * 14),  
-    #           arrow = arrow(length = unit(0.2, "cm")),
-     #          color = "#4682b4") +
-  #geom_text(data = var_data[var_data$label %in% selected_vars,],
-   #         aes(x = PC1 * 14, y = PC2 * 14, label = label),
-    #        color = "#4682b4", vjust = -0.8) +
-  #geom_text_repel(data = landcover_centroids, aes(x = x, y = y, label = Groups), 
-   #               color = "black", point.padding = 0) +
-  theme_minimal() +
-  coord_sf() +
-  theme(legend.title=element_blank(), legend.position = "bottom") +
-  labs(title = "")
-
-ggsave("test.pdf", height=7, width=7)
-
-
-# dark version plot overlap
-fviz_pca_ind(traitsPCA,
-             label = "none",
-             alpha.ind = 0.1,
-             col.ind="white") +
-  geom_sf(data = species1_poly,  inherit.aes = FALSE, alpha = 0.6, color = NA, aes(fill = Species1)) +
-  geom_sf(data = species2_poly,  inherit.aes = FALSE, alpha = 0.6, color = NA, aes(fill = Species2)) +
-  geom_sf(data = overlap_poly, inherit.aes = FALSE, alpha = 0.6, color = NA, fill = "#8849a5") +
-  scale_fill_manual(values = c("#25b9be", "#e41a1c")) +
-  geom_segment(data = var_data[var_data$label %in% selected_vars,],
-               aes(x = 0, y = 0, xend = PC1 * 14, yend = PC2 * 14),  
-               arrow = arrow(length = unit(0.2, "cm")),
-               color = "#73b1e6") +
-  geom_text(data = var_data[var_data$label %in% selected_vars,],
-            aes(x = PC1 * 14, y = PC2 * 14, label = label),
-            color = "#73b1e6", vjust = -0.8) +
-  geom_text_repel(data = landcover_centroids, aes(x = x, y = y, label = Groups), 
-                  color = "white", point.padding = 0) +
-  dark_theme_minimal() +
-  theme(legend.title=element_blank(), legend.position = "bottom") +
-  labs(title = "")
-
-
-# make a not warped version (aspect ratio should match PC%)---------------------
-
-species <- colnames(roundedCounts)[5:96]
-sort(species)
-Species1 <- "Yellow.rumped.Warbler" 
-Species2 <- "Red.breasted.Nuthatch" 
-
-# get polygons -----------------------------------------------------------------
-species1_poly <- speciesPolygons %>% filter(species == Species1)
-species2_poly <- speciesPolygons %>% filter(species == Species2)
-
-# Ensure valid geometries
-species1_poly <- st_make_valid(species1_poly)
-species2_poly <- st_make_valid(species2_poly)
-
-# Calculate intersection
-overlap_poly <- st_intersection(species1_poly, species2_poly)
-
-# Function to convert sf POLYGON to data frame for ggplot
-sf_to_df <- function(sf_obj) {
-  sf::st_geometry(sf_obj) %>%
-    sf::st_cast("POLYGON") %>%
-    lapply(sf::st_coordinates) %>%
-    lapply(as.data.frame) %>%
-    bind_rows(.id = "group")
+# plotting function ------------------------------------------------------------
+overlap_panel <- function(ov, ax) {
+  g <- ggplot() +
+    geom_hline(yintercept = 0, linetype = "dashed") +
+    geom_vline(xintercept = 0, linetype = "dashed") +
+    geom_point(data = sites, aes(x = .data[[paste0("PC", ax[1])]], y = .data[[paste0("PC", ax[2])]]),
+               colour = "grey50", alpha = 0.2) +
+    geom_sf(data = st_sf(geometry = ov$p1), fill = col1, alpha = 0.6, colour = NA) +
+    geom_sf(data = st_sf(geometry = ov$p2), fill = col2, alpha = 0.6, colour = NA)
+  if (length(ov$shared) > 0)
+    g <- g + geom_sf(data = st_sf(geometry = ov$shared), fill = colOverlap, alpha = 0.6, colour = NA)
+  if (all(ax == c(1, 2))) {
+    lab <- landcoverLabelsBuffers[[b]]
+    g <- g + annotate("text", x = lab$x, y = lab$y, label = lab$label)
+  }
+  g + coord_sf(expand = TRUE) +
+    labs(x = paste0("PC", ax[1], " (", pct[ax[1]], "%)"),
+         y = paste0("PC", ax[2], " (", pct[ax[2]], "%)")) +
+    theme_minimal()
 }
 
-species1_df <- sf_to_df(species1_poly)
-species2_df <- sf_to_df(species2_poly)
-overlap_df  <- sf_to_df(overlap_poly)
+v1 <- vol$volume4D[vol$species == Species1]
+v2 <- vol$volume4D[vol$species == Species2]
+captionText <- paste0(
+  Species1, " (teal): PC1 x PC2 area ", round(ov12$area1, 1), ", PC3 x PC4 area ", round(ov34$area1, 1),
+  ", 4-D volume ", round(v1), "\n",
+  Species2, " (red): PC1 x PC2 area ", round(ov12$area2, 1), ", PC3 x PC4 area ", round(ov34$area2, 1),
+  ", 4-D volume ", round(v2), "\n",
+  "Overlap (shared / either species): PC1 x PC2 ", round(100 * ov12$jaccard, 1), "%, PC3 x PC4 ",
+  round(100 * ov34$jaccard, 1), "%, 4-D ", round(100 * ov4D$percentOverlap, 1), "%\n",
+  b, " m buffer. Areas in PC units^2, volume in PC units^4; purple = overlap.")
 
-fviz_pca_ind(traitsPCA,
-             label = "none",
-             alpha.ind = 0.1) +
-  geom_polygon(data = species1_df, aes(x = X, y = Y, group = group), fill = "#25b9be", alpha = 0.6) +
-  geom_polygon(data = species2_df, aes(x = X, y = Y, group = group), fill = "#e41a1c", alpha = 0.6) +
-  geom_polygon(data = overlap_df, aes(x = X, y = Y, group = group), fill = "#8849a5", alpha = 0.6) +
-  annotate("text", x = -7, y = -8, label = "Oak") +
-  annotate("text", x =  6, y = -2, label = "Pine") +
-  annotate("text", x =  0, y = 1, label = "Mixed Conifer") +
-  coord_fixed(ratio = 17.2/27.4) +
-  theme_minimal() +
-  theme(legend.title=element_blank(), legend.position = "bottom") +
-  labs(title = "")
+print(overlap_panel(ov12, c(1, 2)) + overlap_panel(ov34, c(3, 4)) +
+        patchwork::plot_annotation(title = paste(Species1, "vs", Species2), caption = captionText,
+                                   theme = theme(plot.caption = element_text(hjust = 0, size = 9))))
+ggsave(paste0("OverlapPoly_", gsub("[^A-Za-z]", "", Species1), "_", gsub("[^A-Za-z]", "", Species2),
+              "_buffer", b, "m_20261123.pdf"), height = 5.5, width = 11)
 
-ggsave("OverlapPoly_YRWarb_RBNut.pdf", height=5, width=7)
 
 ################################################################################
 # 17) Calculate all pairwise overlaps
