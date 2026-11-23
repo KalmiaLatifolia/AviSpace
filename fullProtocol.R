@@ -33,30 +33,30 @@ library(ks)      # weighted kernel density (section 15)
 # Table of contents ------------------------------------------------------------
 # 1) Processing ARU bioacoustic data - 72
 # 2) Species complexes and cross-identification - 146
-# 3) Adjust detection rates for day-of-year and year - 243
-# 4) Site buffers - 481
-# 5) Remove burned areas - 508
-# 6) Get 1 km habitat variables - 575
-# 7) add USGS CONUS GAP 2011 landcover type - 725
-# 8) which points are too close to each other? - 757
-# 9) remove species with insufficient data - 827
-# 10) make a nice map - 875
-# 11) check for colinearity - 918
-# 12) Niche Space PCA - 1029
-# 13) PCA loadings (supp figures) - 1070
-# 14) render landcover labels - 1149
-# 15) Species acoustic-use space: weighted 4-D kernel density - 1238
-# 16) plot 2 species acoustic-use space overlap (test plot) - 1391
-# 17) Species areas and pairwise overlaps: PC1 x PC2, PC3 x PC4 and 4-D - 1471
-# 18) Range areas and pairwise range overlaps - 1540
-# 19) Range Overlap Maps - 1690
-# 20) Combine range overlaps and niche overlaps - 1795
-# 21) plot range vs niche overlap - 1829
-# 22) Mixed effects model - 1921
-# 23) permutation test - 2075
-# 24) Figure 4 niche areas - 2118
-# 25) Figure 5 - matrix - 2134
-# 26) Species details supp table - 2273
+# 3) Adjust detection rates for day-of-year and year - 252
+# 4) Site buffers - 490
+# 5) Remove burned areas - 517
+# 6) Get 1 km habitat variables - 584
+# 7) add USGS CONUS GAP 2011 landcover type - 734
+# 8) which points are too close to each other? - 766
+# 9) remove species with insufficient data - 836
+# 10) make a nice map - 884
+# 11) check for colinearity - 927
+# 12) Niche Space PCA - 1038
+# 13) PCA loadings (supp figures) - 1079
+# 14) render landcover labels - 1158
+# 15) Species acoustic-use space: weighted 4-D kernel density - 1247
+# 16) plot 2 species acoustic-use space overlap (test plot) - 1400
+# 17) Species areas and pairwise overlaps: PC1 x PC2, PC3 x PC4 and 4-D - 1479
+# 18) Range areas and pairwise range overlaps - 1548
+# 19) Range overlap maps (two species) - 1703
+# 20) Combine range overlaps and niche overlaps - 1805
+# 21) plot range vs niche overlap - 1855
+# 22) Mixed effects model - 1947
+# 23) permutation test - 2101
+# 24) Figure 4 niche areas - 2144
+# 25) Figure 5 - matrix - 2160
+# 26) Species details supp table - 2299
 
 
 # working directory  -----------------------------------------------------------
@@ -153,11 +153,18 @@ write_rds(unit_effort, "unit_effort.rds")
 # labelled as both. These counts are reported in the supplement and justify
 # which species are combined below.
 
+# 23 Nov 2026: scrub-jays added. Woodhouse's Scrub-Jay is detected at 321 sites,
+# none inside its eBird breeding range, at about 3-6% of the California
+# Scrub-Jay rate away from that range. Note this check only finds segments
+# labelled as both species; a call labelled only as the wrong species is not
+# counted, so it can understate one-way confusion.
 crossIDgroups <- data.frame(member = c("Vireo cassinii", "Vireo plumbeus",
                                        "Sphyrapicus ruber", "Sphyrapicus nuchalis",
-                                       "Sphyrapicus thyroideus"),
+                                       "Sphyrapicus thyroideus",
+                                       "Aphelocoma californica", "Aphelocoma woodhouseii"),
                             group = c("Vireo", "Vireo",
-                                      "Sphyrapicus", "Sphyrapicus", "Sphyrapicus"))
+                                      "Sphyrapicus", "Sphyrapicus", "Sphyrapicus",
+                                      "Aphelocoma", "Aphelocoma"))
 crossIDgroups$species_code <- commonNames$species_code[match(crossIDgroups$member, commonNames$scientific_name)]
 stopifnot(!anyNA(crossIDgroups$species_code))
 
@@ -190,15 +197,17 @@ crossIDpairs <- memberDet %>%
          species_2 = commonNames$common_name[match(species_code_2, commonNames$species_code)])
 crossIDpairs
 
-write_csv(crossID, "crossIdentification_species_20261105.csv")
-write_csv(crossIDpairs, "crossIdentification_pairs_20261105.csv")
+write_csv(crossID, "crossIdentification_species_20261123.csv")
+write_csv(crossIDpairs, "crossIdentification_pairs_20261123.csv")
 rm(memberDet)
 
 # species complexes ------------------------------------------------------------
-# Based on the check above, only Red-breasted and Red-naped Sapsucker share a
+# Based on the check above, Red-breasted and Red-naped Sapsucker share a
 # substantial share of segments (~25% and ~35% of their detections).
 # Williamson's Sapsucker (0.5%) and Cassin's/Plumbeous Vireo (0.1% / 2.6%)
 # are kept separate.
+# California Scrub-Jay is fine, but Woodhouse's is probbaly mostly mis-IDs 
+# and should be dropped.
 # The complex is added as an extra taxon. The member species are also kept
 # with their own (unmerged) detections, so later comparisons can use either.
 
@@ -1465,7 +1474,6 @@ print(overlap_panel(ov12, c(1, 2)) + overlap_panel(ov34, c(3, 4)) +
 ggsave(paste0("OverlapPoly_", gsub("[^A-Za-z]", "", Species1), "_", gsub("[^A-Za-z]", "", Species2),
               "_buffer", b, "m_20261123.pdf"), height = 5.5, width = 11)
 
-# RUNNING LEFT OFF HERE ######
 
 ################################################################################
 # 17) Species areas and pairwise overlaps: PC1 x PC2, PC3 x PC4 and 4-D
@@ -1689,115 +1697,129 @@ ggplot() +
   theme(legend.position = "bottom")
 ggsave("FigureS_rangeExtents_20261123.pdf", height = 7, width = 7)
 
+# RUNNING LEFT OFF HERE ######
 
 ################################################################################
-# 19) Range Overlap Maps
+# 19) Range overlap maps (two species)
 ################################################################################
+# 23 Nov 2026. Breeding ranges of any two species from section 18, as in the
+# Shiny app: left, North America (NorthAm extent); right, the study square.
+# Colors match the acoustic-use space plots (section 16), semi-transparent;
+# purple = overlap. North America is drawn on flat grey land clipped to the
+# extent; the study square on the ESRI physical basemap used for the site map
+# (section 10).
+# Under each map: both range areas and the % overlap (Jaccard) for that extent.
+# Uses `ranges`, `extents`, `sites`, `countries`, `rangeAreas` and
+# `rangeOverlaps` from section 18.
 
+# choose species ---------------------------------------------------------------
+Species1 <- "California Scrub-Jay"
+Species2 <- "Woodhouse's Scrub-Jay"
+sort(ranges$species)
 
-# read in data
-x <- st_read(file.path(base_dir, "RangeMaps/Yellow-rumped Warbler/yerwar_range_2022.gpkg"))
-mapview(x)
-y <- st_read(file.path(base_dir, "RangeMaps/Red-breasted Nuthatch/rebnut_range_2022.gpkg"))
-mapview(y)
-z <- st_read(file.path(base_dir, "RangeMaps/Purple Finch/purfin_range_2022.gpkg"))
-mapview(z)
+col1 <- "#25b9be"; col2 <- "#e41a1c"; colOverlap <- "#8849a5"
+naAlbers <- "ESRI:102008" # North America Albers Equal Area
+caAlbers <- "EPSG:3310"   # California Albers, for the study square
+rangeAlpha <- 0.5
 
+# study-area basemap (downloaded once; reused when you change species) ----------
+# ESRI world physical map tiles (Web Mercator), reprojected to the map projection
+get_basemap <- function(box, crs) {
+  view <- st_as_sfc(st_bbox(st_transform(box, crs))) %>% st_segmentize(20000)
+  bm <- basemaps::basemap_terra(ext = st_transform(view, 3857), map_service = "esri",
+                                map_type = "world_physical_map", verbose = FALSE)
+  bm <- terra::project(bm[[1:3]], crs, method = "bilinear")
+  df <- as.data.frame(bm, xy = TRUE, na.rm = TRUE)
+  names(df)[3:5] <- c("r", "g", "b")
+  df$fill <- rgb(pmin(pmax(df$r, 0), 255), pmin(pmax(df$g, 0), 255), pmin(pmax(df$b, 0), 255),
+                 maxColorValue = 255)
+  df[c("x", "y", "fill")]
+}
+if (!exists("basemapStudy")) basemapStudy <- get_basemap(extents$study, caAlbers)
 
-# keep only range in breeding season
-x <- subset(x, x$season=="resident" | x$season=="breeding")
-y <- subset(y, y$season=="resident" | y$season=="breeding")
-z <- subset(z, z$season=="resident" | z$season=="breeding")
+# functions --------------------------------------------------------------------
+# clip to the extent in EPSG 6933 (where the areas were calculated), then project
+clip_to <- function(g, box, crs) st_transform(st_intersection(st_geometry(g), box), crs)
 
-# get intersection
-w <- st_intersection(x, y)
+range_map <- function(box, crs, basemap, showSites) {
+  r1 <- clip_to(filter(ranges, species == Species1), box, crs)
+  r2 <- clip_to(filter(ranges, species == Species2), box, crs)
+  shared <- st_intersection(r1, r2)
+  view <- st_bbox(st_transform(box, crs))
+  outside <- st_difference(st_as_sfc(view), st_transform(box, crs)) # grey out beyond the extent
+  g <- ggplot()
+  if (is.null(basemap)) {
+    # flat grey land, clipped to the extent
+    land <- clip_to(st_transform(countries, equalArea), box, crs)
+    g <- g + geom_sf(data = land, fill = "grey40", colour = "grey40")
+  } else {
+    g <- g + geom_raster(data = basemap, aes(x = x, y = y, fill = fill)) +
+      scale_fill_identity() +
+      geom_sf(data = outside, fill = "white", colour = NA, alpha = 0.7)
+  }
+  g <- g +
+    geom_sf(data = r1, fill = col1, colour = NA, alpha = rangeAlpha) +
+    geom_sf(data = r2, fill = col2, colour = NA, alpha = rangeAlpha)
+  if (length(shared) > 0) g <- g + geom_sf(data = shared, fill = colOverlap, colour = NA, alpha = rangeAlpha)
+  if (showSites) g <- g + geom_sf(data = st_transform(sites, crs), size = 0.3, colour = "black")
+  g + coord_sf(crs = crs, xlim = view[c("xmin", "xmax")], ylim = view[c("ymin", "ymax")], expand = FALSE) +
+    theme_void()
+}
 
-# Get North America map
-north_america <- ne_countries(scale = "medium", continent = "North America", returnclass = "sf")
+format_area <- function(km2) ifelse(km2 >= 1e6, paste(format(round(km2 / 1e6, 3), nsmall = 3), "million km2"),
+                                    paste(format(round(km2), big.mark = ","), "km2"))
 
-# Define a bounding box (xmin, ymin, xmax, ymax)
-bbox <- st_bbox(c(xmin = -140, xmax = -50, ymin = 5, ymax = 70), crs = st_crs(north_america))
+# extent name (black) and three colored lines of text for one extent
+range_text <- function(e, extentLabel) {
+  a1 <- rangeAreas[[paste0("area_km2_", e)]][rangeAreas$species == Species1]
+  a2 <- rangeAreas[[paste0("area_km2_", e)]][rangeAreas$species == Species2]
+  p <- rangeOverlaps %>%
+    filter(extent == e, (species1 == Species1 & species2 == Species2) |
+             (species1 == Species2 & species2 == Species1)) %>% pull(percentOverlap)
+  stopifnot(length(a1) == 1, length(a2) == 1, length(p) == 1)
+  ggplot() +
+    annotate("text", x = 0, y = 4, hjust = 0, size = 4.5, colour = "black",
+             label = paste0("Extent: ", extentLabel)) +
+    annotate("text", x = 0, y = 3, hjust = 0, size = 4.5, colour = col1,
+             label = paste0(Species1, " range area: ", format_area(a1))) +
+    annotate("text", x = 0, y = 2, hjust = 0, size = 4.5, colour = col2,
+             label = paste0(Species2, " range area: ", format_area(a2))) +
+    annotate("text", x = 0, y = 1, hjust = 0, size = 4.5, colour = colOverlap,
+             label = paste0("Range overlap: ", round(p, 1), "%")) +
+    scale_x_continuous(limits = c(0, 1)) + scale_y_continuous(limits = c(0.5, 4.5)) +
+    theme_void()
+}
 
-# Clip to the bounding box
-north_america_clipped <- st_crop(north_america, bbox)
-w_clipped <- st_crop(w, bbox)
-x_clipped <- st_crop(x, bbox)
-y_clipped <- st_crop(y, bbox)
-z_clipped <- st_crop(z, bbox)
+# figure -----------------------------------------------------------------------
+mapNA    <- range_map(extents$NorthAm, naAlbers, NULL,         showSites = FALSE) # flat grey land
+mapStudy <- range_map(extents$study,   caAlbers, basemapStudy, showSites = TRUE)
 
-# plot it
-ggplot() +
-  geom_sf(data = north_america_clipped, fill = "grey40", color = "grey40") +
-  geom_sf(data = y_clipped, fill = "#25b9be", color = "#25b9be", size = 1, alpha=0.6) +
-  geom_sf(data = x_clipped, fill = "#e41a1c", color = "#e41a1c", size = 1, alpha=0.6) +
-  geom_sf(data = w_clipped, fill = "#8849a5", color = "#8849a5", size = 1, alpha=0.6) +
-  #geom_sf(data = z_clipped, fill = "#00ba39", color = "#00ba39", size = 1, alpha=0.6) +
-  theme_void() +  
-  theme(legend.position = "none")
+print(patchwork::wrap_plots(mapNA, mapStudy, range_text("NorthAm", "North America"),
+                            range_text("study", "Study area (Tahoe and Yosemite)"),
+                            ncol = 2, widths = c(1.6, 1), heights = c(5, 1.3)))
+ggsave(paste0("RangeOverlap_", gsub("[^A-Za-z]", "", Species1), "_", gsub("[^A-Za-z]", "", Species2),
+              "_20261123.pdf"), height = 7, width = 12)
 
-ggsave("test_20250522.pdf", height = 5, width = 5)
-
-# plot dark version
-ggplot() +
-  geom_sf(data = north_america_clipped, fill = "grey40", color = "grey40") +
-  geom_sf(data = x_clipped, fill = "#25b9be", color = "#25b9be", size = 1, alpha=0.6) +
-  geom_sf(data = y_clipped, fill = "#e41a1c", color = "#e41a1c", size = 1, alpha=0.6) +
-  geom_sf(data = w_clipped, fill = "#8849a5", color = "#8849a5", size = 1, alpha=0.6) +
-  #geom_sf(data = z_clipped, fill = "#00ba39", color = "#00ba39", size = 1, alpha=0.6) +
-  dark_theme_void() +  
-  theme(legend.position = "none")
-
-
-# make a shiny-ready flexible version of the range map -------------------------
-
-# pick your players
-species <- colnames(roundedCounts)[5:96]
-sort(species)
-Species1 <- "California.Scrub.Jay"
-Species2 <- "Woodhouse.s.Scrub.Jay"
-
-# find the paths
-map_paths <- list.files(file.path(base_dir, "RangeMaps/"), 
-                        pattern = ".*_range_(2022|2023)\\.gpkg$", full.names = TRUE, recursive = TRUE)
-
-# get the maps
-Species1_map <- st_read(grep(Species1, map_paths, value=TRUE))
-Species2_map <- st_read(grep(Species2, map_paths, value=TRUE))
-
-# only breeding season please
-Species1_map_breeding <- subset(Species1_map, Species1_map$season=="resident" | Species1_map$season=="breeding")
-Species2_map_breeding <- subset(Species2_map, Species2_map$season=="resident" | Species2_map$season=="breeding")
-
-# get intersection
-intersection_map <- st_intersection(Species1_map_breeding, Species2_map_breeding)
-
-# Get North America map
-north_america <- ne_countries(scale = "medium", continent = "North America", returnclass = "sf")
-
-# Define a bounding box (xmin, ymin, xmax, ymax)
-bbox <- st_bbox(c(xmin = -140, xmax = -50, ymin = 5, ymax = 70), crs = st_crs(north_america))
-
-# Clip to the bounding box
-north_america_clipped <- st_crop(north_america, bbox)
-Species1_map_clipped <- st_crop(Species1_map_breeding, bbox)
-Species2_map_clipped <- st_crop(Species2_map_breeding, bbox)
-intersection_map_clipped <- st_crop(intersection_map, bbox)
-
-# plot it
-ggplot() +
-  geom_sf(data = north_america_clipped, fill = "grey40", color = "grey40") +
-  geom_sf(data = Species1_map_clipped, fill = "#25b9be", color = "#25b9be", size = 1, alpha=0.6) +
-  geom_sf(data = Species2_map_clipped, fill = "#e41a1c", color = "#e41a1c", size = 1, alpha=0.6) +
-  geom_sf(data = intersection_map_clipped, fill = "#8849a5", color = "#8849a5", size = 1, alpha=0.6) +
-  theme_void() +  
-  theme(legend.position = "none")
-
-# save it
-ggsave("RangeOverlap_OakTit_RNSap.pdf", height=7, width=7)
 
 ################################################################################
 # 20) Combine range overlaps and niche overlaps
 ################################################################################
+
+# species excluded from the analyses -------------------------------------------
+# 23 Nov 2026. Woodhouse's Scrub-Jay: detected at 321 sites, none inside its
+# eBird breeding range; 21% of its detections share a BirdNET segment with
+# California Scrub-Jay (crossIdentification_species_20261123.csv), and away from
+# its range it is detected at ~3-6% of the California Scrub-Jay rate, so most
+# detections are likely misidentified California Scrub-Jays. California
+# Scrub-Jay is kept (0.8% of its detections shared). Removing a species does not
+# change any other species' results (PCA, bandwidths and grids use only the
+# habitat variables), so earlier sections were not re-run; its rows are dropped
+# here from the overlap tables.
+# Red-breasted and Red-naped Sapsucker are analysed as the complex
+# "Red-breasted/Red-naped Sapsucker" (section 2), so the two members are excluded.
+excludedSpecies <- c("Woodhouse's Scrub-Jay", "Red-breasted Sapsucker", "Red-naped Sapsucker")
+analysisSpecies <- setdiff(speciesCols, excludedSpecies)
+length(analysisSpecies) # 89 species
 
 # ensure column names are informative ------------------------------------------
 NicheOverlap <- percentOverlap[, c("species1", "species2", "percentOverlap")]
