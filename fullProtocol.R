@@ -31,33 +31,32 @@ library(mgcv)
 library(ks)      # weighted kernel density (section 15)
 
 # Table of contents ------------------------------------------------------------
-# 1) Processing ARU bioacoustic data - 73
-# 2) Species complexes and cross-identification - 147
-# 3) Adjust detection rates for day-of-year and year - 244
-# 4) Site buffers - 482
-# 5) Remove burned areas - 509
-# 6) Get 1 km habitat variables - 576
-# 7) add USGS CONUS GAP 2011 landcover type - 726
-# 8) which points are too close to each other? - 758
-# 9) remove species with insufficient data - 828
-# 10) make a nice map - 876
-# 11) check for colinearity - 919
-# 12) Niche Space PCA - 1030
-# 13) PCA loadings (supp figures) - 1071
-# 14) render landcover labels - 1150
-# 15) Species acoustic-use space: weighted 4-D kernel density - 1239
-# 16) plot 2 species acoustic-use space overlap (test plot) - 1398
-# 17) Calculate all pairwise overlaps - 1477
-# 18) Species niche Areas & Percent overlap - 1521
-# 19) calculate Range overlaps - 1547
-# 20) Range Overlap Maps - 1696
-# 21) Combine range overlaps and niche overlaps - 1801
-# 22) plot range vs niche overlap - 1835
-# 23) Mixed effects model - 1927
-# 24) permutation test - 2081
-# 25) Figure 4 niche areas - 2124
-# 26) Figure 5 - matrix - 2140
-# 27) Species details supp table - 2279
+# 1) Processing ARU bioacoustic data - 72
+# 2) Species complexes and cross-identification - 146
+# 3) Adjust detection rates for day-of-year and year - 243
+# 4) Site buffers - 481
+# 5) Remove burned areas - 508
+# 6) Get 1 km habitat variables - 575
+# 7) add USGS CONUS GAP 2011 landcover type - 725
+# 8) which points are too close to each other? - 757
+# 9) remove species with insufficient data - 827
+# 10) make a nice map - 875
+# 11) check for colinearity - 918
+# 12) Niche Space PCA - 1029
+# 13) PCA loadings (supp figures) - 1070
+# 14) render landcover labels - 1149
+# 15) Species acoustic-use space: weighted 4-D kernel density - 1238
+# 16) plot 2 species acoustic-use space overlap (test plot) - 1391
+# 17) Species areas and pairwise overlaps: PC1 x PC2, PC3 x PC4 and 4-D - 1471
+# 18) Range areas and pairwise range overlaps - 1540
+# 19) Range Overlap Maps - 1690
+# 20) Combine range overlaps and niche overlaps - 1795
+# 21) plot range vs niche overlap - 1829
+# 22) Mixed effects model - 1921
+# 23) permutation test - 2075
+# 24) Figure 4 niche areas - 2118
+# 25) Figure 5 - matrix - 2134
+# 26) Species details supp table - 2273
 
 
 # working directory  -----------------------------------------------------------
@@ -1367,8 +1366,6 @@ for (b in names(traitsPCABuffers)) {
             paste0("acousticSpace_4Dcells_buffer", b, "m_20261120.rds"))
 }
 
-# RUNNING LEFT OFF HERE ######
-
 # checks -----------------------------------------------------------------------
 lapply(volumesBuffers, function(v) summary(v$volume4D))
 lapply(overlapsBuffers, function(o) summary(o$percentOverlap))
@@ -1388,10 +1385,6 @@ ggplot() +
   facet_wrap(~ species) +
   labs(x = "PC1", y = "PC2") +
   theme_minimal()
-
-# sections 16 onward still use one set of 2-D polygons and overlaps (150 m);
-# they will be updated to the three buffers next
-speciesPolygons <- polygonsPC12Buffers[["150"]]
 
 
 ################################################################################
@@ -1472,228 +1465,233 @@ print(overlap_panel(ov12, c(1, 2)) + overlap_panel(ov34, c(3, 4)) +
 ggsave(paste0("OverlapPoly_", gsub("[^A-Za-z]", "", Species1), "_", gsub("[^A-Za-z]", "", Species2),
               "_buffer", b, "m_20261123.pdf"), height = 5.5, width = 11)
 
+# RUNNING LEFT OFF HERE ######
 
 ################################################################################
-# 17) Calculate all pairwise overlaps
+# 17) Species areas and pairwise overlaps: PC1 x PC2, PC3 x PC4 and 4-D
 ################################################################################
+# 23 Nov 2026. Section 15 already calculated, for each buffer, every species'
+# PC1 x PC2 area, PC3 x PC4 area and 4-D volume, and the pairwise 4-D overlaps.
+# This section adds the pairwise 2-D overlaps (from the polygons, holes
+# excluded) and saves one species table and one pairwise table per buffer.
+# % overlap = Jaccard: shared area (or volume) / area covered by either species,
+# x 100. Units: areas in PC units^2, volumes in PC units^4.
+# Runtime: a few minutes per buffer.
 
-# define species combinations --------------------------------------------------
-pairwise_combinations <- expand_grid(species1 = speciesPolygons$species,
-                                     species2 = speciesPolygons$species) %>% filter(species1 < species2)
-
-# make fxn to calculate overlaps
-calculate_overlaps <- function(sp1, sp2) {
-  # get polygons -----------------------------------------------------------------
-  species1_poly <- speciesPolygons %>% filter(species == sp1)
-  species2_poly <- speciesPolygons %>% filter(species == sp2)
-  
-  # Ensure valid geometries
-  species1_poly <- st_make_valid(species1_poly)
-  species2_poly <- st_make_valid(species2_poly)
-  
-  # Calculate intersection
-  overlap_poly <- st_intersection(species1_poly, species2_poly)
-  
-  # calculate overlap area
-  overlap_area <- st_area(overlap_poly)
-  # Return the sf object
-  if (nrow(overlap_poly) == 0) {return(0)}
-  return(overlap_area)
+# pairwise 2-D overlap areas from a set of species polygons
+pair_overlap_2D <- function(polys, pairs) {
+  geoms <- st_make_valid(st_geometry(polys))
+  i1 <- match(pairs$species1, polys$species)
+  i2 <- match(pairs$species2, polys$species)
+  stopifnot(!anyNA(i1), !anyNA(i2))
+  mapply(function(a, b) {
+    shared <- st_intersection(geoms[a], geoms[b])
+    if (length(shared) == 0) 0 else sum(as.numeric(st_area(shared)))
+  }, i1, i2)
 }
 
+speciesAreasBuffers <- list(); pairwiseOverlapsBuffers <- list()
+for (b in names(volumesBuffers)) {
+  # species table --------------------------------------------------------------
+  areas <- volumesBuffers[[b]] %>%
+    dplyr::select(species, nSites, area_PC12, area_PC34, volume4D)
+  speciesAreasBuffers[[b]] <- areas
 
-# Calculate intersection areas -------------------------------------------------
-pairwise_combinations$overlap_area <- mapply(calculate_overlaps,
-                                             pairwise_combinations$species1,
-                                             pairwise_combinations$species2)
+  # pairwise table: start from the 4-D overlaps (all species pairs) -----------
+  pairs <- overlapsBuffers[[b]] %>%
+    transmute(species1, species2,
+              volume1_4D = volume1, volume2_4D = volume2,
+              overlapVolume_4D = overlap_volume,
+              percentOverlap_4D = 100 * percentOverlap)
 
-
-# save the dataframe -----------------------------------------------------------
-
-setwd(file.path(base_dir, "Draft 1"))
-setwd(file.path(base_dir, "AviSpace_GitHub/AviSpace4.0"))
-
-write.csv(pairwise_combinations, "speciesNicheOverlapAreas_jittered_detPerWeek_20250624.csv")
-
-
-
-################################################################################
-# 18) Species niche Areas & Percent overlap
-################################################################################
-
-# species areas
-speciesAreas <- data.frame(species = speciesPolygons$species,
-                           area = st_area(speciesPolygons))
-
-# save it 
-write_rds(speciesAreas, "speciesNicheAreas_20250624.rds")
-#speciesAreas <- readRDS("speciesNicheAreas_20250624.rds")
-
-# add areas to pairwise overlap
-percentOverlap <- merge(pairwise_combinations, speciesAreas, by.x = "species1", by.y = "species")
-names(percentOverlap)[names(percentOverlap) == 'area'] <- 'area1'
-percentOverlap <- merge(percentOverlap, speciesAreas, by.x = "species2", by.y = "species")
-names(percentOverlap)[names(percentOverlap) == 'area'] <- 'area2'
-
-# calculate % overlap
-percentOverlap$percentOverlap <- percentOverlap$overlap_area / (percentOverlap$area1 + percentOverlap$area2 - percentOverlap$overlap_area)
-
-# save it 
-write_rds(percentOverlap, "percentOverlap_20250624.rds")
-
-
-
-################################################################################
-# 19) calculate Range overlaps
-################################################################################
-
-
-# toy - single species pair ----------------------------------------------------
-
-# read in data
-x <- st_read(file.path(base_dir, "RangeMaps/Yellow-rumped Warbler/yerwar_range_2022.gpkg"))
-mapview(x)
-y <- st_read(file.path(base_dir, "RangeMaps/Red-breasted Nuthatch/rebnut_range_2022.gpkg"))
-mapview(y)
-
-# keep only range in breeding season
-x <- subset(x, x$season=="resident" | x$season=="breeding")
-y <- subset(y, y$season=="resident" | y$season=="breeding")
-mapview(x)
-mapview(y)
-
-# what is the CRS?
-st_crs(x) #WGS84, EPSG4326
-st_crs(y)
-
-# lat/lon doesn't give accurate area measurements
-# switch to Albers Equal Area 5070
-x <- st_transform(x, crs = 5070)
-y <- st_transform(y, crs = 5070)
-
-# measure area
-st_area(x)
-st_area(y)
-
-# get overlap area
-z <- st_intersection(x,y)
-mapview(z)
-st_area(z)
-
-# get percent overlap
-w <- st_area(z) / (st_area(x) + st_area(y) - st_area(z))
-w
-
-# visualize
-mapview(x) +
-  mapview(y)
-
-
-# LOOP - all species pairs -----------------------------------------------------
-
-# temporarily chage wd
-setwd(file.path(base_dir, "RangeMaps"))
-
-# Get all folder names (aka species names) in the current working directory
-species_paths <- list.dirs(path = ".", full.names = FALSE, recursive = FALSE)
-
-# Create an empty list to store results
-species_data <- list()  
-
-# loop through to load all .gpkg files
-for (species in species_paths) {
-  files <- list.files(path = species, pattern = ".*_range_(2022|2023)\\.gpkg$", full.names = TRUE)
-  
-  if (length(files) > 0) {
-    species_data[[species]] <- st_read(files[1])  # Store in the list with species name as key
-    print(paste("Loaded:", files[1]))
-  } else {
-    print(paste("No matching file found for species:", species))
+  # add 2-D areas and overlaps
+  for (plane in c("PC12", "PC34")) {
+    polys <- if (plane == "PC12") polygonsPC12Buffers[[b]] else polygonsPC34Buffers[[b]]
+    a <- setNames(areas[[paste0("area_", plane)]], areas$species)
+    shared <- pair_overlap_2D(polys, pairs)
+    pairs[[paste0("area1_", plane)]] <- a[pairs$species1]
+    pairs[[paste0("area2_", plane)]] <- a[pairs$species2]
+    pairs[[paste0("overlapArea_", plane)]] <- shared
+    pairs[[paste0("percentOverlap_", plane)]] <- 100 * shared /
+      (a[pairs$species1] + a[pairs$species2] - shared)
+    message(b, " m: ", plane, " done")
   }
+  pairs <- pairs %>%
+    dplyr::select(species1, species2,
+                  area1_PC12, area2_PC12, overlapArea_PC12, percentOverlap_PC12,
+                  area1_PC34, area2_PC34, overlapArea_PC34, percentOverlap_PC34,
+                  volume1_4D, volume2_4D, overlapVolume_4D, percentOverlap_4D)
+  pairwiseOverlapsBuffers[[b]] <- pairs
+
+  # save -----------------------------------------------------------------------
+  write_csv(areas, paste0("speciesAreas_buffer", b, "m_20261123.csv"))
+  write_csv(pairs, paste0("pairwiseOverlaps_buffer", b, "m_20261123.csv"))
 }
 
-# Initialize an empty data frame to store results
-rangeOverlaps <- data.frame(
-  species1 = character(),
-  species2 = character(),
-  area1 = numeric(),
-  area2 = numeric(),
-  overlap_area = numeric(),
-  stringsAsFactors = FALSE
-)
+# checks -----------------------------------------------------------------------
+sapply(pairwiseOverlapsBuffers, nrow) # 4,186 pairs per buffer for 92 species
+lapply(pairwiseOverlapsBuffers, function(p)
+  summary(p[, c("percentOverlap_PC12", "percentOverlap_PC34", "percentOverlap_4D")]))
+# how closely do 2-D (PC1 x PC2) and 4-D overlaps agree?
+sapply(pairwiseOverlapsBuffers, function(p) cor(p$percentOverlap_PC12, p$percentOverlap_4D)) # more than 90% similar.
 
-# Loop over all pairwise combinations of species
-for (i in 1:(length(species_data) - 1)) {
-  for (j in (i + 1):length(species_data)) {
-    
-    species1 <- str_extract(names(species_data)[i], "[^/]+$")
-    species2 <- str_extract(names(species_data)[j], "[^/]+$")
-    
-    poly1 <- species_data[[names(species_data)[i]]]
-    poly2 <- species_data[[names(species_data)[j]]]
-    
-    # Keep only breeding + resident
-    poly1 <- subset(poly1, season %in% c("resident", "breeding"))
-    poly2 <- subset(poly2, season %in% c("resident", "breeding"))
-    
-    # Make valid and reproject
-    poly1 <- st_transform(st_make_valid(poly1), 5070)
-    poly2 <- st_transform(st_make_valid(poly2), 5070)
-    
-    # Try intersection and area calculation
-    tryCatch({
-      area1 <- sum(st_area(poly1))
-      area2 <- sum(st_area(poly2))
-      overlap <- st_intersection(poly1, poly2)
-      overlap_area <- sum(st_area(overlap))
-      
-      rangeOverlaps <- rbind(rangeOverlaps, data.frame(
-        species1 = species1,
-        species2 = species2,
-        area1 = as.numeric(area1),
-        area2 = as.numeric(area2),
-        overlap_area = as.numeric(overlap_area)
-      ))
-    }, error = function(e) {
-      message(paste("Failed:", species1, "-", species2, "|", e$message)) # E.C. Dove gives some errors...
-    })
-  }
-}
-
-
-# calculate range overlap percent
-rangeOverlaps$overlap_percent <- rangeOverlaps$overlap_area / (rangeOverlaps$area1 + rangeOverlaps$area2 - rangeOverlaps$overlap_area)
-
-# go back to main wd
-setwd(file.path(base_dir, "Draft 1"))
-
-# write csv
-
-setwd(file.path(base_dir, "AviSpace_GitHub/AviSpace4.0"))
-
-write.csv(rangeOverlaps, "rangeOverlaps_20250624.csv")
-write_rds(rangeOverlaps, "rangeOverlaps_20250624.rds")
-
-
-# make dot version -------------------------------------------------------------
-dotVclean_nameMatches <-  read.csv(file.path(base_dir, "dotVclean_nameMatches.csv"))
-
-rangeOverlapsDot <- merge(rangeOverlaps, dotVclean_nameMatches, by.x = "species1", by.y = "cleanName")
-rangeOverlapsDot$species1 <- NULL
-names(rangeOverlapsDot)[names(rangeOverlapsDot) == "dotName"] <- "species1"
-
-rangeOverlapsDot <- merge(rangeOverlapsDot, dotVclean_nameMatches, by.x = "species2", by.y = "cleanName")
-rangeOverlapsDot$species2 <- NULL
-names(rangeOverlapsDot)[names(rangeOverlapsDot) == "dotName"] <- "species2"
-
-# save dot version -------------------------------------------------------------
-
-write.csv(rangeOverlapsDot, "rangeOverlaps_dotNames_20250624.csv")
-write_rds(rangeOverlapsDot, "rangeOverlaps_dotNames_20250624.rds")
-rangeOverlaps <- readRDS("rangeOverlaps_dotNames_20250623.rds")
 
 ################################################################################
-# 20) Range Overlap Maps
+# 18) Range areas and pairwise range overlaps
+################################################################################
+# 23 Nov 2026. eBird Status and Trends range maps (RangeMaps/<species>/*_range_<year>.gpkg).
+# - Breeding range only: "breeding" polygons for migratory species, "resident"
+#   polygons for sedentary species.
+# - Species names are taken from the folder names, which match speciesCols
+#   (common names with spaces, as everywhere else in this script). The
+#   sapsucker complex uses the union of the Red-breasted and Red-naped ranges.
+# - Areas are calculated in EPSG 6933 (WGS 84 / EASE-Grid 2.0, equal-area,
+#   global). Some breeding ranges extend outside North America and across the
+#   180th meridian (e.g. Common Raven, Pacific Wren). CONUS Albers (EPSG 5070)
+#   is equal-area in principle, but these polygons are not projected correctly
+#   in it: it overstates Common Raven's range by ~16%; EPSG 6933 is within 0.3%
+#   of the geodesic area.
+# - Extent sensitivity (reviewer request): ranges are clipped to
+#     full    : no clipping (whole breeding range)
+#     NorthAm : North America north of 15 N (lon -170 to -50, lat 15 to 84)
+#     WestNA  : western North America (as NorthAm, west of 100 W)
+#     study   : square around the sites (side = the larger of the sites'
+#               east-west and north-south extent)
+# - % overlap = Jaccard x 100, as in section 17. Areas in km^2.
+
+# extents ----------------------------------------------------------------------
+sf_use_s2(FALSE) # planar geometry in EPSG 6933
+equalArea <- 6933
+
+lonlat_box <- function(xmin, xmax, ymin, ymax) {
+  st_as_sfc(st_bbox(c(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), crs = 4326)) %>%
+    st_transform(equalArea) %>%
+    st_segmentize(10000) # straight in EPSG 6933; vertices every 10 km so the edges curve correctly in the map projection
+}
+
+sites <- st_as_sf(siteDataBuffers[["150"]], coords = c("long", "lat"), crs = 4326)
+sb <- st_bbox(st_transform(sites, 3310))   # California Albers, meters
+side <- max(sb["xmax"] - sb["xmin"], sb["ymax"] - sb["ymin"])
+cx <- mean(sb[c("xmin", "xmax")]); cy <- mean(sb[c("ymin", "ymax")])
+studySquare <- st_as_sfc(st_bbox(c(xmin = cx - side / 2, xmax = cx + side / 2,
+                                   ymin = cy - side / 2, ymax = cy + side / 2), crs = 3310)) %>%
+  st_segmentize(10000) %>% st_transform(equalArea)
+
+extents <- list(full    = NULL,
+                NorthAm = lonlat_box(-170, -50, 15, 84),
+                WestNA  = lonlat_box(-170, -100, 15, 84),
+                study   = studySquare)
+round(side / 1000) # side of the study square (km)
+
+# breeding ranges, one (multi)polygon per species --------------------------------
+rangeFiles <- list.files(file.path(base_dir, "RangeMaps"), pattern = "_range_20(22|23)\\.gpkg$",
+                         full.names = TRUE, recursive = TRUE)
+ranges <- map_dfr(rangeFiles, function(f)
+  st_read(f, quiet = TRUE) %>%
+    filter(season %in% c("breeding", "resident")) %>%
+    mutate(species = basename(dirname(f))) %>%
+    dplyr::select(species, scientific_name, season))
+ranges$species[ranges$species == "Eurasian Collared Dove"] <- "Eurasian Collared-Dove"
+
+ranges <- ranges %>%
+  st_transform(equalArea) %>%
+  st_make_valid() %>%
+  group_by(species) %>%
+  dplyr::summarise(scientific_name = first(scientific_name), .groups = "drop")
+
+# species complexes: union of the member ranges (complexMembers, section 2)
+for (cx_name in unique(complexMembers$common_name)) {
+  members <- ranges %>% filter(scientific_name %in% complexMembers$member[complexMembers$common_name == cx_name])
+  stopifnot(nrow(members) == sum(complexMembers$common_name == cx_name))
+  # summarise() unions the member geometries and keeps the same geometry column
+  ranges <- bind_rows(ranges, members %>%
+                        dplyr::summarise(species = cx_name, scientific_name = NA_character_))
+}
+
+setdiff(speciesCols, ranges$species) # should be empty
+stopifnot(!any(st_is_empty(ranges)), length(attr(ranges, "sf_column")) == 1,
+          sum(sapply(ranges, inherits, "sfc")) == 1) # one geometry column, no empty ranges
+ranges <- ranges %>% filter(species %in% speciesCols) %>% arrange(species)
+write_rds(ranges, "speciesRanges_breeding_EPSG6933_20261123.rds")
+
+# areas and pairwise overlaps for each extent ------------------------------------
+pairs <- as.data.frame(t(combn(sort(speciesCols), 2)))
+names(pairs) <- c("species1", "species2")
+
+rangeAreas <- tibble(species = ranges$species)
+rangeOverlapsList <- list()
+for (e in names(extents)) {
+  g <- st_geometry(ranges)
+  if (!is.null(extents[[e]])) g <- st_intersection(g, extents[[e]], dimensions = "polygon")
+  # st_intersection drops empty results; put every species back in order
+  if (length(g) != nrow(ranges)) {
+    keep <- st_intersects(st_geometry(ranges), extents[[e]], sparse = FALSE)[, 1]
+    gFull <- rep(st_sfc(st_multipolygon(), crs = equalArea), nrow(ranges))
+    gFull[keep] <- g
+    g <- gFull
+  }
+  areas <- setNames(as.numeric(st_area(g)) / 1e6, ranges$species)
+  rangeAreas[[paste0("area_km2_", e)]] <- areas
+
+  i1 <- match(pairs$species1, ranges$species); i2 <- match(pairs$species2, ranges$species)
+  touching <- st_intersects(g)
+  shared <- mapply(function(a, b) {
+    if (!(b %in% touching[[a]])) return(0)
+    as.numeric(sum(st_area(st_intersection(g[a], g[b])))) / 1e6
+  }, i1, i2)
+
+  rangeOverlapsList[[e]] <- pairs %>%
+    mutate(extent = e, area1_km2 = areas[species1], area2_km2 = areas[species2],
+           overlapArea_km2 = shared,
+           percentOverlap = ifelse(area1_km2 + area2_km2 - shared > 0,
+                                   100 * shared / (area1_km2 + area2_km2 - shared), NA))
+  message(e, " done")
+}
+rangeOverlaps <- bind_rows(rangeOverlapsList)
+
+write_csv(rangeAreas, "rangeAreas_20261123.csv")
+write_csv(rangeOverlaps, "rangeOverlaps_20261123.csv") # long format: one row per pair and extent
+
+# checks -----------------------------------------------------------------------
+rangeAreas %>% filter(area_km2_study == 0)  # species with no breeding range in the study square
+rangeOverlaps %>% group_by(extent) %>%
+  dplyr::summarise(pairs = n(), meanOverlap = mean(percentOverlap, na.rm = TRUE),
+                   noOverlap = sum(overlapArea_km2 == 0))
+# how much does the extent change the % overlaps? (correlation with full ranges)
+# 1 species pair never overlaps (ChBaChickadee + WHScrubJay)
+# 10 species pairs don't overlap inside the study region (Tahoe, Yosemite) 4 of those are w/ Red-naped Sapsucker which should be merged.
+rangeOverlaps %>% dplyr::select(species1, species2, extent, percentOverlap) %>%
+  pivot_wider(names_from = extent, values_from = percentOverlap) %>%
+  dplyr::select(-species1, -species2) %>% cor(use = "pairwise.complete.obs") %>% round(2)
+# Full and NorthAm correlate 96%. Just the study region correlates only 46-58% with other range bboxes.
+# using studyregion bbox might give me very different results.
+
+# supplemental figure: the extents ------------------------------------------------
+naAlbers <- "ESRI:102008" # North America Albers Equal Area, for display
+countries <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf") %>%
+  st_make_valid() %>%
+  st_crop(c(xmin = -180, xmax = -20, ymin = 0, ymax = 90)) # keeps the projection well-behaved
+extentLines <- st_sf(extent = c("North America", "Western North America", "Study area"),
+                     geometry = c(extents$NorthAm, extents$WestNA, extents$study)) %>%
+  st_transform(naAlbers)
+extentLines$extent <- factor(extentLines$extent, levels = extentLines$extent)
+view <- st_bbox(st_transform(extents$NorthAm, naAlbers))
+
+ggplot() +
+  geom_sf(data = st_transform(countries, naAlbers), fill = "grey90", colour = "grey60", linewidth = 0.2) +
+  geom_sf(data = extentLines, aes(colour = extent, linetype = extent), fill = NA, linewidth = 0.8) +
+  geom_sf(data = st_transform(sites, naAlbers), size = 0.3, colour = "black") +
+  scale_colour_manual(values = c("#27548A", "#e41a1c", "#F5C45E")) +
+  scale_linetype_manual(values = c("solid", "dashed", "solid")) +
+  coord_sf(xlim = view[c("xmin", "xmax")], ylim = view[c("ymin", "ymax")]) +
+  labs(colour = "Range extent", linetype = "Range extent") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+ggsave("FigureS_rangeExtents_20261123.pdf", height = 7, width = 7)
+
+
+################################################################################
+# 19) Range Overlap Maps
 ################################################################################
 
 
@@ -1798,7 +1796,7 @@ ggplot() +
 ggsave("RangeOverlap_OakTit_RNSap.pdf", height=7, width=7)
 
 ################################################################################
-# 21) Combine range overlaps and niche overlaps
+# 20) Combine range overlaps and niche overlaps
 ################################################################################
 
 # ensure column names are informative ------------------------------------------
@@ -1832,7 +1830,7 @@ merge2 <- merge(NicheOverlap, rangeOverlaps, by.x = c("species1", "species2"), b
 NicheRangeOverlap <- rbind(merge1, merge2)
 
 ################################################################################
-# 22) plot range vs niche overlap
+# 21) plot range vs niche overlap
 ################################################################################
 
 # mark congeneric pairs --------------------------------------------------------
@@ -1924,7 +1922,7 @@ ggsave("NicheRangeOverlap_points_20260706.pdf", height=5, width=7)
 
 
 ################################################################################
-# 23) Mixed effects model
+# 22) Mixed effects model
 ################################################################################
 
 # Mixed effects model - accounts for species non-independence (the same species appear in multiple pairs)
@@ -2078,7 +2076,7 @@ ggplot(subset(NicheRangeOverlapDot, NicheRangeOverlapDot$congeneric=="Same Genus
   ylab("Range Overlap (%)")
 
 ################################################################################
-# 24) permutation test
+# 23) permutation test
 ################################################################################
 
 # ---- 1. Species -> genus map, straight from the genus columns ----
@@ -2121,7 +2119,7 @@ hist(null, breaks = 40, main = "Permutation null: slope difference",
 
 
 ################################################################################
-# 25) Figure 4 niche areas 
+# 24) Figure 4 niche areas 
 ################################################################################
 
 ggplot(NicheAreas, aes(x = reorder(species, area), y = area)) +
@@ -2137,7 +2135,7 @@ ggplot(NicheAreas, aes(x = reorder(species, area), y = area)) +
 ggsave("NicheAreas_20250709.pdf", height=12, width=7)
 
 ################################################################################
-# 26) Figure 5 - matrix
+# 25) Figure 5 - matrix
 ################################################################################
 
 # Heirarchical Matrix
@@ -2276,7 +2274,7 @@ combined_plot
 ggsave("Figure5_matrix_sup.PDF", height=8, width=9)
 
 ################################################################################
-# 27) Species details supp table
+# 26) Species details supp table
 ################################################################################
 
 # niche area
