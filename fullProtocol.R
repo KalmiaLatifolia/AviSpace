@@ -28,36 +28,36 @@ library(patchwork)
 library(MCMCglmm)
 library(coda)
 library(mgcv)
+library(ks)      # weighted kernel density (section 15)
 
 # Table of contents ------------------------------------------------------------
 # 1) Processing ARU bioacoustic data - 73
 # 2) Species complexes and cross-identification - 147
 # 3) Adjust detection rates for day-of-year and year - 244
-# 4) Site buffers - 474
-# 5) Remove burned areas - 501
-# 6) Get 1 km habitat variables - 568
-# 7) add USGS CONUS GAP 2011 landcover type - 718
-# 8) which points are too close to each other? - 750
-# 9) remove species with insufficient data - 820
-# 10) make a nice map - 868
-# 11) check for colinearity - 911
-# 12) Niche Space PCA - 1024
-# 13) PCA loadings (supp figures) - 1064
-# 14) render landcover labels - 1119
-# 15) test plot for errored species polygons - 1177
-# 16) Species Niche Polygons - 1216
-# 17) plot 2 species niche overlap - 1315
-# 18) Calculate all pairwise overlaps - 1443
-# 19) Species niche Areas & Percent overlap - 1487
-# 20) calculate Range overlaps - 1513
-# 21) Range Overlap Maps - 1662
-# 22) Combine range overlaps and niche overlaps - 1767
-# 23) plot range vs niche overlap - 1801
-# 24) Mixed effects model - 1893
-# 25) permutation test - 2047
-# 26) Figure 4 niche areas - 2090
-# 27) Figure 5 - matrix - 2106
-# 28) Species details supp table - 2245
+# 4) Site buffers - 482
+# 5) Remove burned areas - 509
+# 6) Get 1 km habitat variables - 576
+# 7) add USGS CONUS GAP 2011 landcover type - 726
+# 8) which points are too close to each other? - 758
+# 9) remove species with insufficient data - 828
+# 10) make a nice map - 876
+# 11) check for colinearity - 919
+# 12) Niche Space PCA - 1032
+# 13) PCA loadings (supp figures) - 1073
+# 14) render landcover labels - 1152
+# 15) Species acoustic-use space: weighted 4-D kernel density - 1241
+# 16) plot 2 species niche overlap - 1398
+# 17) Calculate all pairwise overlaps - 1526
+# 18) Species niche Areas & Percent overlap - 1570
+# 19) calculate Range overlaps - 1596
+# 20) Range Overlap Maps - 1745
+# 21) Combine range overlaps and niche overlaps - 1850
+# 22) plot range vs niche overlap - 1884
+# 23) Mixed effects model - 1976
+# 24) permutation test - 2130
+# 25) Figure 4 niche areas - 2173
+# 26) Figure 5 - matrix - 2189
+# 27) Species details supp table - 2328
 
 
 # working directory  -----------------------------------------------------------
@@ -402,18 +402,26 @@ write_rds(phenoCurves, "phenologyCurves_20261104.rds")
 
 phenoCurves <- merge(phenoCurves, commonNames[c("species_code", "common_name")])
 
-ggplot(phenoCurves, aes(x = as.Date(doy - 1, origin = "2021-01-01"), y = fit,
-                        color = year, fill = year)) +
-  geom_ribbon(aes(ymin = lwr, ymax = upr), alpha = 0.2, color = NA) +
-  geom_line(linewidth = 0.4) +
-  facet_wrap(~ common_name, scales = "free_y", ncol = 8) +
-  scale_x_date(date_labels = "%b", date_breaks = "1 month") +
-  labs(x = "Date", y = "Predicted detections per day (average site)",
-       color = "Year", fill = "Year") +
-  theme_minimal(base_size = 7) +
-  theme(strip.text = element_text(size = 6),
-        legend.position = "bottom")
-ggsave("FigureS_phenologyCurves_20261104.pdf", height = 14, width = 11)
+# two pages with wider panels so labels are legible (20 Nov 2026)
+phenoSpecies <- sort(unique(phenoCurves$common_name))
+phenoPages <- split(phenoSpecies, ceiling(seq_along(phenoSpecies) / ceiling(length(phenoSpecies) / 2)))
+pdf("FigureS_phenologyCurves_20261120.pdf", height = 8.5, width = 7.5)
+for (sp in phenoPages) {
+  print(ggplot(filter(phenoCurves, common_name %in% sp),
+               aes(x = as.Date(doy - 1, origin = "2021-01-01"), y = fit,
+                   color = year, fill = year)) +
+          geom_ribbon(aes(ymin = lwr, ymax = upr), alpha = 0.2, color = NA) +
+          geom_line(linewidth = 0.4) +
+          facet_wrap(~ common_name, scales = "free_y", ncol = 6,
+                     labeller = as_labeller(function(x) stringr::str_wrap(gsub("/", "/ ", x), 16))) +
+          scale_x_date(date_labels = "%b", date_breaks = "1 month") +
+          labs(x = "Date", y = "Predicted detections per day (average site)",
+               color = "Year", fill = "Year") +
+          theme_minimal(base_size = 8) +
+          theme(strip.text = element_text(size = 6.5),
+                legend.position = "bottom"))
+}
+dev.off()
 
 # combine detections, effort, and common names ---------------------------------
 
@@ -1018,8 +1026,6 @@ lapply(siteDetections_foliarTraits_BioCubeBuffers, function(x) {
 })
 # no NAs. good to go. 
 
-# RUNNING LEFT OFF HERE ######
-
 ################################################################################
 # 12) Niche Space PCA
 ################################################################################
@@ -1033,21 +1039,22 @@ speciesCols <- intersect(names(siteDetections_foliarTraits_BioCubeBuffers[["150"
                          unique(siteCounts$common_name))
 length(speciesCols) # 92 species
 
-# convert to count data, calculate PCA, add PCs ---------------------------------
-# rounding detection rates to whole numbers for the kernel density step
+# site data, PCA, add PCs ------------------------------------------------------
+# 20 Nov 2026: detection rates are no longer rounded to counts; section 15 uses
+# them directly as kernel density weights. The PCA uses only the habitat
+# variables, so it is unchanged.
 
-roundedCountsBuffers <- lapply(siteDetections_foliarTraits_BioCubeBuffers, function(x) {
-  x <- x %>% mutate(across(all_of(speciesCols), ~ round(.)))
+siteDataBuffers <- lapply(siteDetections_foliarTraits_BioCubeBuffers, function(x) {
   x$geometry <- NULL
-  x
+  as.data.frame(x)
 })
 
-traitsPCABuffers <- lapply(roundedCountsBuffers, function(x)
+traitsPCABuffers <- lapply(siteDataBuffers, function(x)
   prcomp(x[, spatVars], center = TRUE, scale = TRUE))
 
-roundedPCABuffers <- lapply(names(roundedCountsBuffers), function(b)
-  cbind(roundedCountsBuffers[[b]], traitsPCABuffers[[b]]$x))
-names(roundedPCABuffers) <- names(roundedCountsBuffers)
+sitePCABuffers <- lapply(names(siteDataBuffers), function(b)
+  cbind(siteDataBuffers[[b]], traitsPCABuffers[[b]]$x))
+names(sitePCABuffers) <- names(siteDataBuffers)
 
 # variance explained by PC1-PC4, for each buffer size (%)
 sapply(traitsPCABuffers, function(p) round(100 * summary(p)$importance["Proportion of Variance", 1:min(10, ncol(p$x))], 1))
@@ -1055,8 +1062,8 @@ sapply(traitsPCABuffers, function(p) round(100 * summary(p)$importance["Proporti
 
 # save -------------------------------------------------------------------------
 for (b in names(traitsPCABuffers)) {
-  write_rds(traitsPCABuffers[[b]], paste0("traitsPCA_buffer", b, "m_20261119.rds"))
-  write_rds(roundedPCABuffers[[b]], paste0("roundedPCA_buffer", b, "m_20261119.rds"))
+  write_rds(traitsPCABuffers[[b]], paste0("traitsPCA_buffer", b, "m_20261120.rds"))
+  write_rds(sitePCABuffers[[b]], paste0("sitePCA_buffer", b, "m_20261120.rds"))
 }
 
 
@@ -1114,6 +1121,30 @@ fviz_contrib(traitsPCABuffers[["150"]], choice="var", axes = 2, sort.val ="asc")
   coord_flip() + labs(title = "Contribution of variables to PC2 (%), 150 m") +
   ylab("Habitat")
 
+# scree plot with broken-stick expectation - supplemental figure ---------------
+# 20 Nov 2026. Supports keeping PC1-PC4 for the acoustic-use space: % variance
+# levels off after PC4 (each later PC explains < 4.5%). Dashed line = broken-stick
+# model (variance expected per PC if total variance were split at random).
+screeDF <- map_dfr(names(traitsPCABuffers), function(b) {
+  ev <- traitsPCABuffers[[b]]$sdev^2
+  k  <- length(ev)
+  tibble(buffer = paste(b, "m buffer"), PC = 1:k, pctVar = 100 * ev / sum(ev),
+         cumVar = cumsum(pctVar), brokenStick = 100 * rev(cumsum(1 / (k:1))) / k)
+}) %>%
+  mutate(buffer = factor(buffer, levels = paste(names(traitsPCABuffers), "m buffer")))
+
+screeDF %>% filter(PC <= 8) %>% mutate(across(where(is.numeric), ~ round(., 1))) %>% print(n = Inf)
+
+ggplot(filter(screeDF, PC <= 20), aes(PC, pctVar)) +
+  geom_vline(xintercept = 4.5, linetype = "dotted", colour = "grey50") +
+  geom_line(aes(y = brokenStick), linetype = "dashed", colour = "grey40") +
+  geom_line() + geom_point(size = 1.5) +
+  facet_wrap(~ buffer) +
+  scale_x_continuous(breaks = c(1, 4, 8, 12, 16, 20)) +
+  labs(x = "Principal component", y = "Variance explained (%)") +
+  theme_bw()
+ggsave("ScreePlot_allBuffers_20261120.pdf", width = 9, height = 3.5)
+
 
 ################################################################################
 # 14) render landcover labels
@@ -1133,7 +1164,7 @@ lc_label <- function(lc) dplyr::case_when(
 landcoverLabelsBuffers <- list()
 for (b in names(traitsPCABuffers)) {
   p  <- traitsPCABuffers[[b]]
-  lc <- roundedCountsBuffers[[b]]$landcover_type # same rows, same order as the PCA
+  lc <- siteDataBuffers[[b]]$landcover_type # same rows, same order as the PCA
 
   # label positions: mean PC1/PC2 of the sites in each group
   lcLabels <- data.frame(p$x[, 1:2], label = lc_label(lc)) %>%
@@ -1154,165 +1185,217 @@ for (b in names(traitsPCABuffers)) {
   print(landcover_pca_plot)
   ggsave(paste0("landcover_pca_buffer", b, "m_20261119.pdf"), plot = landcover_pca_plot, height = 7, width = 12)
 
-  # PC3 and PC4 panels - supplemental figure 7
+  # PC3 and PC4 panels - supplemental figure
+  # 20 Nov 2026: shared landcover legend in the empty sixth panel, as in the
+  # previous draft (Figure S11)
   make_pca_plot <- function(ax) {
     fviz_pca_ind(p,
                  axes = ax,
                  label = "none",
                  habillage = lc) +
       ggtitle(paste0("PC", ax[1], " vs PC", ax[2])) +
-      theme(legend.position = "none")
+      guides(color = guide_legend(ncol = 2), fill = guide_legend(ncol = 2),
+             shape = guide_legend(ncol = 2))
   }
-  print((make_pca_plot(c(4,1)) | make_pca_plot(c(3,1))) /
-          (make_pca_plot(c(4,2)) | make_pca_plot(c(3,2))) /
-          (make_pca_plot(c(4,3)) | patchwork::plot_spacer()))
-  ggsave(paste0("landcover_pca_PC34panels_buffer", b, "m_20261119.pdf"), height = 10, width = 10)
+  print(patchwork::wrap_plots(make_pca_plot(c(4,1)), make_pca_plot(c(3,1)),
+                              make_pca_plot(c(4,2)), make_pca_plot(c(3,2)),
+                              make_pca_plot(c(4,3)), patchwork::guide_area(), ncol = 2) +
+          patchwork::plot_layout(guides = "collect") &
+          theme(legend.text = element_text(size = 5), legend.key.size = unit(0.3, "cm")))
+  ggsave(paste0("landcover_pca_PC34panels_buffer", b, "m_20261120.pdf"), height = 10, width = 11.5)
 }
 
-# 150 m label positions, in the format used by the overlap plots in section 17
+
+# buffer size sensitivity - supplemental figure ---------------------------------
+# 20 Nov 2026. 50 m and 300 m buffers, PC1 x PC2 (with Oak/Pine/Mixed Conifer
+# labels) and PC3 x PC4, with one shared landcover legend
+buffer_panel <- function(b, ax) {
+  # (all three buffers have the same 24 landcover types, so the legends merge)
+  g <- fviz_pca_ind(traitsPCABuffers[[b]], axes = ax, label = "none",
+                    habillage = siteDataBuffers[[b]]$landcover_type) +
+    guides(color = guide_legend(ncol = 3), fill = guide_legend(ncol = 3),
+           shape = guide_legend(ncol = 3)) +
+    ggtitle(paste0(b, " m buffer: PC", ax[1], " vs PC", ax[2]))
+  if (all(ax == c(1, 2))) {
+    lab <- landcoverLabelsBuffers[[b]]  # Oak/Pine/Mixed Conifer positions from the loop above
+    stopifnot(is.data.frame(lab), all(c("x", "y", "label") %in% names(lab)))
+    g <- g + annotate("text", x = lab$x, y = lab$y, label = lab$label)
+  }
+  g
+}
+print(patchwork::wrap_plots(buffer_panel("50", c(1, 2)), buffer_panel("50", c(3, 4)),
+                            buffer_panel("300", c(1, 2)), buffer_panel("300", c(3, 4)), ncol = 2) +
+        patchwork::plot_layout(guides = "collect") +
+        patchwork::plot_annotation(tag_levels = "A") &
+        theme(legend.position = "bottom", legend.text = element_text(size = 6),
+              legend.key.size = unit(0.3, "cm"), legend.title = element_blank()))
+ggsave("landcover_pca_bufferSensitivity_20261120.pdf", height = 11, width = 10)
+
+# 150 m label positions, in the format used by the overlap plots in section 16
 landcover_centroids <- dplyr::rename(landcoverLabelsBuffers[["150"]], Groups = label)
 
 
 ################################################################################
-# 15) test plot for errored species polygons
+# 15) Species acoustic-use space: weighted 4-D kernel density
 ################################################################################
+# 20 Nov 2026. Replaces the rounded, jittered 2-D kde2d method (old sections
+# 15 and 16). Run for each buffer size. For each species:
+#   - space     = site scores on PC1-PC4 (raw PC scores, not rescaled)
+#   - weights   = the species' detection rate at each site (section 3 rate)
+#   - bandwidth = one diagonal plug-in bandwidth per buffer (ks::Hpi.diag),
+#                 estimated from all sites and shared by all species, so
+#                 volumes and overlaps are comparable among species
+#   - grid      = one common grid per buffer; cell width on each PC is a fixed
+#                 fraction of that PC's bandwidth (finer 4-D grids run out of
+#                 memory on a laptop)
+#   - acoustic-use space = smallest set of grid cells holding 90% of the density
+#   - volume    = number of cells x cell volume (PC units^4)
+#   - overlap   = Jaccard: cells shared by both species / cells in either
+# 2-D regions (PC1 x PC2 and PC3 x PC4) are estimated the same way from their
+# own 2-D densities and saved as sf polygons (holes kept as holes) for the
+# figures and the Shiny app.
+# Runtime: roughly 15 s per species per buffer (~25 min per buffer).
 
-# some species weren't plotting correctly because not enough points
-# Solution #1) 1 = 1 detection per 10 days (x10 increase) (NOPE)
-# Solution #2) add jitter to all points (non-identical coordinates) (this worked)
+nPC        <- 4
+prob       <- 0.90  # share of the density inside the acoustic-use space
+cellFrac4D <- 0.75  # 4-D cell width, as a fraction of each PC's bandwidth
+cellFrac2D <- 0.25  # 2-D cell width (2-D grids are cheap, so finer)
 
-species <- names(roundedPCA)[5:96]
-species
-species1 <- "Swainson.s.Thrush"
-species1 <- "American.Robin"
-species1 <- "Downy.Woodpecker" 
-species1 <- "Lawrence.s.Goldfinch" 
-species1 <- "Eurasian.Collared.Dove" 
+# functions --------------------------------------------------------------------
+# grid points per axis = padded range / (cellFrac x bandwidth)
+grid_points <- function(H, xmin, xmax, cellFrac)
+  ceiling((xmax - xmin) / (cellFrac * sqrt(diag(H)))) + 1
 
-
-get_density_threshold <- function(kde, prob = 0.90) {
-  z_vals <- sort(as.vector(kde$z), decreasing = TRUE)
-  cum_probs <- cumsum(z_vals) / sum(z_vals)
-  threshold_index <- which(cum_probs >= prob)[1]
-  z_thresh <- z_vals[threshold_index]
-  return(z_thresh)
+# weighted KDE on a fixed grid, and the cells holding `prob` of the density
+kde_region <- function(X, w, H, xmin, xmax, gridsize, prob = 0.90) {
+  w  <- w * nrow(X) / sum(w)  # ks needs weights summing to n
+  fh <- ks::kde(X, H = H, w = w, xmin = xmin, xmax = xmax, gridsize = gridsize,
+                binned = TRUE, compute.cont = FALSE)
+  est <- fh$estimate
+  est[est < 0] <- 0           # binned estimates can have tiny negative values
+  cellVol <- prod(sapply(fh$eval.points, function(g) diff(g[1:2])))
+  z   <- sort(as.vector(est), decreasing = TRUE)
+  thr <- z[which(cumsum(z) / sum(z) >= prob)[1]]
+  inside <- est >= thr
+  list(eval.points = fh$eval.points, estimate = est, threshold = thr,
+       inside = inside, nCells = sum(inside), volume = sum(inside) * cellVol,
+       massOnGrid = sum(est) * cellVol)  # ~1; lower means density off the grid
 }
 
-uncounted_data1 <- tidyr::uncount(roundedPCA, get(species1))
-uncounted_data1$PC1 <- uncounted_data1$PC1 + rnorm(nrow(uncounted_data1), mean = 0, sd = 0.5)
-uncounted_data1$PC2 <- uncounted_data1$PC2 + rnorm(nrow(uncounted_data1), mean = 0, sd = 0.5)
-ggplot(uncounted_data1, aes(x=PC1, y=PC2)) +  geom_density2d()
-d <- MASS::kde2d(x = uncounted_data1$PC1, y = uncounted_data1$PC2, lims = c(15, -20, -15, 15), n = 200)
-dens <- data.frame(expand.grid(x = d$x, y = d$y), z = as.vector(d$z))
-z_thresh <- get_density_threshold(d, prob = 0.90)
+# 2-D region as an sf MULTIPOLYGON; isobands returns holes as interior rings
+kde_polygon <- function(fit) {
+  iso <- isoband::isobands(x = fit$eval.points[[1]], y = fit$eval.points[[2]],
+                           z = t(fit$estimate), levels_low = fit$threshold,
+                           levels_high = max(fit$estimate) + 1)
+  st_cast(st_make_valid(st_sfc(isoband::iso_to_sfg(iso)[[1]])), "MULTIPOLYGON")
+}
+
+# 4-D regions are stored as packed bits (1 bit per cell) to save memory
+pack_cells  <- function(v) packBits(c(v, rep(FALSE, (8 - length(v) %% 8) %% 8)))
+bitsPerByte <- sapply(0:255, function(i) sum(as.integer(intToBits(i))))
+count_cells <- function(r) sum(bitsPerByte[as.integer(r) + 1L])
+
+# run for each buffer size -----------------------------------------------------
+volumesBuffers <- list(); overlapsBuffers <- list()
+polygonsPC12Buffers <- list(); polygonsPC34Buffers <- list()
+
+for (b in names(traitsPCABuffers)) {
+  pcs   <- traitsPCABuffers[[b]]$x[, 1:nPC]
+  rates <- siteDataBuffers[[b]][, speciesCols]
+  stopifnot(nrow(pcs) == nrow(rates))  # same sites, same order as the PCA
+
+  # common bandwidths and grids for this buffer
+  H4  <- ks::Hpi.diag(pcs)
+  H12 <- ks::Hpi.diag(pcs[, 1:2])
+  H34 <- ks::Hpi.diag(pcs[, 3:4])
+  pad  <- 3 * sqrt(diag(H4))
+  xmin <- apply(pcs, 2, min) - pad
+  xmax <- apply(pcs, 2, max) + pad
+  grid4D <- grid_points(H4,  xmin,      xmax,      cellFrac4D)
+  grid12 <- grid_points(H12, xmin[1:2], xmax[1:2], cellFrac2D)
+  grid34 <- grid_points(H34, xmin[3:4], xmax[3:4], cellFrac2D)
+  cellVol4D <- prod((xmax - xmin) / (grid4D - 1))
+  message(b, " m buffer: 4-D grid ", paste(grid4D, collapse = " x "),
+          " (", format(prod(grid4D), big.mark = ","), " cells)")
+
+  cells <- list(); vols <- list(); poly12 <- list(); poly34 <- list()
+  for (sp in speciesCols) {
+    w   <- rates[[sp]]
+    f4  <- kde_region(pcs,         w, H4,  xmin,      xmax,      grid4D, prob)
+    f12 <- kde_region(pcs[, 1:2], w, H12, xmin[1:2], xmax[1:2], grid12, prob)
+    f34 <- kde_region(pcs[, 3:4], w, H34, xmin[3:4], xmax[3:4], grid34, prob)
+    cells[[sp]]  <- pack_cells(as.vector(f4$inside))
+    poly12[[sp]] <- kde_polygon(f12)
+    poly34[[sp]] <- kde_polygon(f34)
+    vols[[sp]] <- tibble(species = sp, nSites = sum(w > 0),
+                         volume4D = f4$volume, nCells4D = f4$nCells,
+                         area_PC12 = as.numeric(st_area(poly12[[sp]])),
+                         area_PC34 = as.numeric(st_area(poly34[[sp]])),
+                         mass4D = f4$massOnGrid)
+    message(b, " m: ", sp)
+  }
+  volumes <- bind_rows(vols)
+  stopifnot(all(volumes$mass4D > 0.99))  # density not cut off by the grid edge
+
+  # pairwise 4-D overlaps (Jaccard) -------------------------------------------
+  nCells <- setNames(volumes$nCells4D, volumes$species)
+  overlaps <- as.data.frame(t(combn(sort(speciesCols), 2)))
+  names(overlaps) <- c("species1", "species2")
+  overlaps$overlap_cells <- mapply(function(s1, s2) count_cells(cells[[s1]] & cells[[s2]]),
+                                   overlaps$species1, overlaps$species2)
+  overlaps <- overlaps %>%
+    mutate(volume1 = nCells[species1] * cellVol4D,
+           volume2 = nCells[species2] * cellVol4D,
+           overlap_volume = overlap_cells * cellVol4D,
+           percentOverlap = overlap_cells / (nCells[species1] + nCells[species2] - overlap_cells)) %>%
+    dplyr::select(-overlap_cells)
+
+  # 2-D polygons as sf -----------------------------------------------------------
+  polys12 <- st_sf(species = names(poly12), geometry = do.call(c, poly12))
+  polys34 <- st_sf(species = names(poly34), geometry = do.call(c, poly34))
+
+  volumesBuffers[[b]] <- volumes; overlapsBuffers[[b]] <- overlaps
+  polygonsPC12Buffers[[b]] <- polys12; polygonsPC34Buffers[[b]] <- polys34
+
+  # save -----------------------------------------------------------------------
+  write_csv(volumes,  paste0("acousticSpace_volumes_buffer", b, "m_20261120.csv"))
+  write_csv(overlaps, paste0("acousticSpace_4Doverlaps_buffer", b, "m_20261120.csv"))
+  write_rds(polys12,  paste0("speciesPolygons_PC12_buffer", b, "m_20261120.rds"))
+  write_rds(polys34,  paste0("speciesPolygons_PC34_buffer", b, "m_20261120.rds"))
+  write_rds(list(cells = cells, grid4D = grid4D, xmin = xmin, xmax = xmax, H4 = H4,
+                 cellVol4D = cellVol4D),
+            paste0("acousticSpace_4Dcells_buffer", b, "m_20261120.rds"))
+}
+
+# RUNNING LEFT OFF HERE ######
+
+# checks -----------------------------------------------------------------------
+lapply(volumesBuffers, function(v) summary(v$volume4D))
+lapply(overlapsBuffers, function(o) summary(o$percentOverlap))
+nrow(overlapsBuffers[["150"]]) # 4,186 pairs for 92 species
+
+# check figure: 2-D polygons for four species (150 m), sites sized by rate
+checkSp <- c("Hermit Thrush", "Swainson's Thrush", "Yellow-rumped Warbler", "Oak Titmouse")
+checkSites <- map_dfr(checkSp, ~ tibble(species = .x, PC1 = traitsPCABuffers[["150"]]$x[, 1],
+                                        PC2 = traitsPCABuffers[["150"]]$x[, 2],
+                                        rate = siteDataBuffers[["150"]][[.x]]))
 ggplot() +
-  geom_contour_filled(data = dens, aes(x = x, y = y, z = z),
-                      breaks = c(z_thresh, max(dens$z)))
+  geom_sf(data = filter(polygonsPC12Buffers[["150"]], species %in% checkSp),
+          fill = "#27548A", alpha = 0.3, colour = "#27548A") +
+  geom_point(data = filter(checkSites, rate == 0), aes(PC1, PC2), colour = "grey70", size = 0.3) +
+  geom_point(data = filter(checkSites, rate > 0), aes(PC1, PC2, size = rate), shape = 21) +
+  scale_size_area(max_size = 3) +
+  facet_wrap(~ species) +
+  labs(x = "PC1", y = "PC2") +
+  theme_minimal()
 
-ggplot(roundedPCA, aes(x=PC1, y=PC2, color=get(species1))) + geom_point() + scale_color_viridis_c()
-ggplot(uncounted_data1, aes(x=PC1, y=PC2)) + geom_point(alpha=0.05)
-
-################################################################################
-# 16) Species Niche Polygons
-################################################################################
-
-
-# make a function to set a specific % of points inside each contour ------------
-get_density_threshold <- function(kde, prob = 0.90) {
-  z_vals <- sort(as.vector(kde$z), decreasing = TRUE)
-  cum_probs <- cumsum(z_vals) / sum(z_vals)
-  threshold_index <- which(cum_probs >= prob)[1]
-  z_thresh <- z_vals[threshold_index]
-  return(z_thresh)
-}
-
-
-# Make function: calculate niche polygons --------------------------------------
-calculate_polygons <- function(species1) {
-  # Species count data
-  uncounted_data1 <- tidyr::uncount(roundedPCA, get(species1))
-  
-  # add jitter
-  uncounted_data1$PC1 <- uncounted_data1$PC1 + rnorm(nrow(uncounted_data1), mean = 0, sd = 0.5)
-  uncounted_data1$PC2 <- uncounted_data1$PC2 + rnorm(nrow(uncounted_data1), mean = 0, sd = 0.5)
-
-  # Try KDE and plot extraction
-  p1dat <- tryCatch({
-    # 2d kernel density estimation
-    d <- MASS::kde2d(uncounted_data1$PC1, uncounted_data1$PC2, lims=c(15,-20,-15,15), n=200)    # lims() here prevents polygon edges from getting cut off. n sets resolution. 
-    dens <- data.frame(expand.grid(x = d$x, y = d$y), z = as.vector(d$z))
-    #plot it
-    z_thresh <- get_density_threshold(d, prob = 0.90) # set 90% threshold
-    p1 <- ggplot() +
-      geom_contour_filled(data = dens, aes(x = x, y = y, z = z),
-                          breaks = c(z_thresh, max(dens$z)))
-    #get build
-    ggplot_build(p1)$data[[1]]
-  }, error = function(e) {
-    warning(paste("Skipping species", species1, "- KDE failed:", e$message))
-    return(NULL)
-  })
-  
-  # If KDE failed
-  if (is.null(p1dat)) return(NULL)
-  
-  # Close each polygon by repeating the first coordinate
-  p1_closed <- p1dat %>%
-    group_by(subgroup, level) %>%
-    reframe(
-      x = c(x, x[1]),
-      y = c(y, y[1])
-    )
-  
-  # Split into list by subgroup and level
-  p1_split <- p1_closed %>%
-    group_by(subgroup, level) %>%
-    group_split()
-  
-  # Create sf POLYGON objects
-  polygons <- lapply(p1_split, function(df) {
-    coords <- cbind(df$x, df$y)
-    st_polygon(list(coords))
-  })
-  
-  # Extract levels for each polygon
-  levels_vec <- sapply(p1_split, function(df) unique(df$level))
-  
-  # Combine into sf object
-  p1_sf <- st_sf(
-    species = rep(species1, length(levels_vec)),
-    level = levels_vec,
-    geometry = st_sfc(polygons)
-  )
-  
-  # Union polygons by level and cast as MULTIPOLYGON
-  p1_multi <- p1_sf %>%
-    group_by(species, level) %>%
-    summarise(geometry = st_union(geometry), .groups = "drop") %>%
-    st_cast("MULTIPOLYGON")
-  
-  # Return the sf object
-  return(p1_multi)
-}
-
-
-# Make a dataframe with all species polygons -----------------------------------
-# (KDE fails for Downy.Woodpecker and Lawrence.s.Goldfinch)
-
-speciesPolygons <- map_dfr(species, ~ calculate_polygons(.x), .id = "species1")
-speciesPolygons$species1 <- NULL
-speciesPolygons$level <-NULL
-
-# save it ----------------------------------------------------------------------
-
-setwd(file.path(base_dir, "Draft 1"))
-setwd(file.path(base_dir, "AviSpace_GitHub/AviSpace4.0"))
-
-write_rds(speciesPolygons, "speciesPolygons_jittered_detPerDay_20250624.rds")
+# sections 16 onward still use one set of 2-D polygons and overlaps (150 m);
+# they will be updated to the three buffers next
+speciesPolygons <- polygonsPC12Buffers[["150"]]
 
 
 ################################################################################
-# 17) plot 2 species niche overlap
+# 16) plot 2 species niche overlap
 ################################################################################
 
 # pick my favorite eigenvectors ------------------------------------------------
@@ -1440,7 +1523,7 @@ fviz_pca_ind(traitsPCA,
 ggsave("OverlapPoly_YRWarb_RBNut.pdf", height=5, width=7)
 
 ################################################################################
-# 18) Calculate all pairwise overlaps
+# 17) Calculate all pairwise overlaps
 ################################################################################
 
 # define species combinations --------------------------------------------------
@@ -1484,7 +1567,7 @@ write.csv(pairwise_combinations, "speciesNicheOverlapAreas_jittered_detPerWeek_2
 
 
 ################################################################################
-# 19) Species niche Areas & Percent overlap
+# 18) Species niche Areas & Percent overlap
 ################################################################################
 
 # species areas
@@ -1510,7 +1593,7 @@ write_rds(percentOverlap, "percentOverlap_20250624.rds")
 
 
 ################################################################################
-# 20) calculate Range overlaps
+# 19) calculate Range overlaps
 ################################################################################
 
 
@@ -1659,7 +1742,7 @@ write_rds(rangeOverlapsDot, "rangeOverlaps_dotNames_20250624.rds")
 rangeOverlaps <- readRDS("rangeOverlaps_dotNames_20250623.rds")
 
 ################################################################################
-# 21) Range Overlap Maps
+# 20) Range Overlap Maps
 ################################################################################
 
 
@@ -1764,7 +1847,7 @@ ggplot() +
 ggsave("RangeOverlap_OakTit_RNSap.pdf", height=7, width=7)
 
 ################################################################################
-# 22) Combine range overlaps and niche overlaps
+# 21) Combine range overlaps and niche overlaps
 ################################################################################
 
 # ensure column names are informative ------------------------------------------
@@ -1798,7 +1881,7 @@ merge2 <- merge(NicheOverlap, rangeOverlaps, by.x = c("species1", "species2"), b
 NicheRangeOverlap <- rbind(merge1, merge2)
 
 ################################################################################
-# 23) plot range vs niche overlap
+# 22) plot range vs niche overlap
 ################################################################################
 
 # mark congeneric pairs --------------------------------------------------------
@@ -1890,7 +1973,7 @@ ggsave("NicheRangeOverlap_points_20260706.pdf", height=5, width=7)
 
 
 ################################################################################
-# 24) Mixed effects model
+# 23) Mixed effects model
 ################################################################################
 
 # Mixed effects model - accounts for species non-independence (the same species appear in multiple pairs)
@@ -2044,7 +2127,7 @@ ggplot(subset(NicheRangeOverlapDot, NicheRangeOverlapDot$congeneric=="Same Genus
   ylab("Range Overlap (%)")
 
 ################################################################################
-# 25) permutation test
+# 24) permutation test
 ################################################################################
 
 # ---- 1. Species -> genus map, straight from the genus columns ----
@@ -2087,7 +2170,7 @@ hist(null, breaks = 40, main = "Permutation null: slope difference",
 
 
 ################################################################################
-# 26) Figure 4 niche areas 
+# 25) Figure 4 niche areas 
 ################################################################################
 
 ggplot(NicheAreas, aes(x = reorder(species, area), y = area)) +
@@ -2103,7 +2186,7 @@ ggplot(NicheAreas, aes(x = reorder(species, area), y = area)) +
 ggsave("NicheAreas_20250709.pdf", height=12, width=7)
 
 ################################################################################
-# 27) Figure 5 - matrix
+# 26) Figure 5 - matrix
 ################################################################################
 
 # Heirarchical Matrix
@@ -2242,7 +2325,7 @@ combined_plot
 ggsave("Figure5_matrix_sup.PDF", height=8, width=9)
 
 ################################################################################
-# 28) Species details supp table
+# 27) Species details supp table
 ################################################################################
 
 # niche area
