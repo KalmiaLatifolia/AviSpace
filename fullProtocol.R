@@ -1866,7 +1866,6 @@ print(patchwork::wrap_plots(mapNA, mapStudy, range_text("NorthAm", "North Americ
 ggsave(paste0("RangeOverlap_", gsub("[^A-Za-z]", "", Species1), "_", gsub("[^A-Za-z]", "", Species2),
               "_20261123.pdf"), height = 7, width = 12)
 
-# RUNNING LEFT OFF HERE ######
 
 ################################################################################
 # 20) Combine range overlaps and niche overlaps
@@ -2022,7 +2021,7 @@ fit_chains <- function(d) {
 p_from_draws <- function(x) 2 * max(0.5 / length(x), min(mean(x > 0), mean(x < 0)))
 ci <- function(x) sprintf("%.2f [%.2f, %.2f]", mean(x), quantile(x, 0.025), quantile(x, 0.975))
 
-# fit all 12 models ------------------------------------------------------------
+# fit all 12 models ----------------------------------------------------(slooow)
 modelChains <- list(); modelResults <- list()
 for (k in names(nicheRangeOverlaps)) {
   d <- prep_model_data(nicheRangeOverlaps[[k]])
@@ -2052,6 +2051,8 @@ for (k in names(nicheRangeOverlaps)) {
     max_Rhat = round(max(rhat), 3), min_ESS = round(min(ess)))
   message(k, " done")
 }
+
+# RUNNING LEFT OFF HERE ######
 
 modelSummary <- bind_rows(modelResults)
 modelSummary
