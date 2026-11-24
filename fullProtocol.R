@@ -33,30 +33,30 @@ library(ks)      # weighted kernel density (section 15)
 # Table of contents ------------------------------------------------------------
 # 1) Processing ARU bioacoustic data - 72
 # 2) Species complexes and cross-identification - 146
-# 3) Adjust detection rates for day-of-year and year - 252
-# 4) Site buffers - 490
-# 5) Remove burned areas - 517
-# 6) Get 1 km habitat variables - 584
-# 7) add USGS CONUS GAP 2011 landcover type - 734
-# 8) which points are too close to each other? - 766
-# 9) remove species with insufficient data - 836
-# 10) make a nice map - 884
-# 11) check for colinearity - 927
-# 12) Niche Space PCA - 1038
-# 13) PCA loadings (supp figures) - 1079
-# 14) render landcover labels - 1158
-# 15) Species acoustic-use space: weighted 4-D kernel density - 1247
-# 16) plot 2 species acoustic-use space overlap (test plot) - 1400
-# 17) Species areas and pairwise overlaps: PC1 x PC2, PC3 x PC4 and 4-D - 1479
-# 18) Range areas and pairwise range overlaps - 1548
-# 19) Range overlap maps (two species) - 1703
-# 20) Combine range overlaps and niche overlaps - 1805
-# 21) plot range vs niche overlap - 1855
-# 22) Mixed effects model - 1947
-# 23) permutation test - 2101
-# 24) Figure 4 niche areas - 2144
-# 25) Figure 5 - matrix - 2160
-# 26) Species details supp table - 2299
+# 3) Adjust detection rates for day-of-year and year - 259
+# 4) Site buffers - 497
+# 5) Remove burned areas - 524
+# 6) Get 1 km habitat variables - 591
+# 7) add USGS CONUS GAP 2011 landcover type - 741
+# 8) which points are too close to each other? - 773
+# 9) remove species with insufficient data - 843
+# 10) make a nice map - 891
+# 11) check for colinearity - 934
+# 12) Niche Space PCA - 1045
+# 13) PCA loadings (supp figures) - 1086
+# 14) render landcover labels - 1165
+# 15) Species acoustic-use space: weighted 4-D kernel density - 1254
+# 16) plot 2 species acoustic-use space overlap (test plot) - 1407
+# 17) Species niche areas and pairwise overlaps: PC1 x PC2, PC3 x PC4 and 4-D - 1502
+# 18) Range areas and pairwise range overlaps - 1571
+# 19) Range overlap maps (two species) - 1757
+# 20) Combine range overlaps and niche overlaps - 1860
+# 21) Mixed effects models - 1956
+# 22) Leave-one-genus-out models (main dataset) - 2170
+# 23) permutation test - 2247
+# 24) Figure 4 niche areas - 2290
+# 25) Figure 5 - matrix - 2306
+# 26) Species details supp table - 2445
 
 
 # working directory  -----------------------------------------------------------
@@ -158,17 +158,23 @@ write_rds(unit_effort, "unit_effort.rds")
 # Scrub-Jay rate away from that range. Note this check only finds segments
 # labelled as both species; a call labelled only as the wrong species is not
 # counted, so it can understate one-way confusion.
-crossIDgroups <- data.frame(member = c("Vireo cassinii", "Vireo plumbeus",
-                                       "Sphyrapicus ruber", "Sphyrapicus nuchalis",
-                                       "Sphyrapicus thyroideus",
-                                       "Aphelocoma californica", "Aphelocoma woodhouseii"),
-                            group = c("Vireo", "Vireo",
-                                      "Sphyrapicus", "Sphyrapicus", "Sphyrapicus",
-                                      "Aphelocoma", "Aphelocoma"))
-crossIDgroups$species_code <- commonNames$species_code[match(crossIDgroups$member, commonNames$scientific_name)]
+# 24 Nov 2026: all congeneric species are now checked, not just the vireos,
+# sapsuckers and scrub-jays: every detected species is grouped by genus (first
+# word of the scientific name), and genera with 2+ detected species are kept.
+# BirdNET's non-bird labels (e.g. "Human vocal") have the same scientific and
+# common name and are left out.
+detectedCodes <- unique(det$species_code)
+crossIDgroups <- commonNames %>%
+  filter(species_code %in% detectedCodes, scientific_name != common_name) %>%
+  transmute(member = scientific_name, group = word(scientific_name, 1), species_code) %>%
+  group_by(group) %>%
+  filter(n() > 1) %>%
+  ungroup() %>%
+  as.data.frame()
+crossIDgroups %>% dplyr::count(group) # genera checked and number of detected species in each
 stopifnot(!anyNA(crossIDgroups$species_code))
 
-memberDet <- det %>%
+memberDet <- det %>%             # slow
   filter(species_code %in% crossIDgroups$species_code) %>%
   dplyr::select(cell_unit, filename, relative_sec, survey_date, species_code) %>%
   mutate(group = crossIDgroups$group[match(species_code, crossIDgroups$species_code)]) %>%
@@ -188,6 +194,7 @@ crossID
 
 # per species pair: number of segments where both were detected
 crossIDpairs <- memberDet %>%
+  filter(n_members > 1) %>% # only shared segments can form pairs (keeps the join small)
   dplyr::select(group, cell_unit, filename, relative_sec, species_code) %>%
   inner_join(., ., by = c("group", "cell_unit", "filename", "relative_sec"),
              suffix = c("_1", "_2"), relationship = "many-to-many") %>%
@@ -197,8 +204,8 @@ crossIDpairs <- memberDet %>%
          species_2 = commonNames$common_name[match(species_code_2, commonNames$species_code)])
 crossIDpairs
 
-write_csv(crossID, "crossIdentification_species_20261123.csv")
-write_csv(crossIDpairs, "crossIdentification_pairs_20261123.csv")
+write_csv(crossID, "crossIdentification_species_20261124.csv")
+write_csv(crossIDpairs, "crossIdentification_pairs_20261124.csv")
 rm(memberDet)
 
 # species complexes ------------------------------------------------------------
@@ -1403,12 +1410,13 @@ ggplot() +
 # Panels show PC1 x PC2 and PC3 x PC4. Axes use equal units (1 PC unit is the
 # same length on both axes), which is how areas and volumes were calculated;
 # PC1 looks longer than PC2 because its scores are more spread out.
-# The caption gives 2-D areas, 4-D volumes and Jaccard % overlap.
+# Colored text under each panel gives the areas and Jaccard % overlap; the
+# block below gives the 4-D volumes and overlap.
 
 # choose buffer and species ----------------------------------------------------
 b        <- "150"
-Species1 <- "Hermit Thrush"
-Species2 <- "Swainson's Thrush"
+Species1 <- "White-breasted Nuthatch"
+Species2 <- "Red-breasted Nuthatch"
 sort(speciesCols)
 
 # colors as in the previous draft
@@ -1457,26 +1465,41 @@ overlap_panel <- function(ov, ax) {
     theme_minimal()
 }
 
+# colored text under each panel, as in the range maps (section 19) ---------------
+text_block <- function(header, lines, cols) {
+  n <- length(lines)
+  g <- ggplot() + annotate("text", x = 0, y = n + 1, hjust = 0, size = 4, label = header)
+  for (i in seq_len(n))
+    g <- g + annotate("text", x = 0, y = n + 1 - i, hjust = 0, size = 4, colour = cols[i], label = lines[i])
+  g + scale_x_continuous(limits = c(0, 1)) + scale_y_continuous(limits = c(0.5, n + 1.5)) + theme_void()
+}
+fmt <- function(x, d = 1) format(round(as.numeric(x), d), nsmall = d, big.mark = ",")
+cols3 <- c(col1, col2, colOverlap)
+
 v1 <- vol$volume4D[vol$species == Species1]
 v2 <- vol$volume4D[vol$species == Species2]
-captionText <- paste0(
-  Species1, " (teal): PC1 x PC2 area ", round(ov12$area1, 1), ", PC3 x PC4 area ", round(ov34$area1, 1),
-  ", 4-D volume ", round(v1), "\n",
-  Species2, " (red): PC1 x PC2 area ", round(ov12$area2, 1), ", PC3 x PC4 area ", round(ov34$area2, 1),
-  ", 4-D volume ", round(v2), "\n",
-  "Overlap (shared / either species): PC1 x PC2 ", round(100 * ov12$jaccard, 1), "%, PC3 x PC4 ",
-  round(100 * ov34$jaccard, 1), "%, 4-D ", round(100 * ov4D$percentOverlap, 1), "%\n",
-  b, " m buffer. Areas in PC units^2, volume in PC units^4; purple = overlap.")
+txt12 <- text_block("PC1 x PC2 (area in PC units2)",
+                    c(paste0(Species1, " area: ", fmt(ov12$area1)),
+                      paste0(Species2, " area: ", fmt(ov12$area2)),
+                      paste0("Overlap: ", fmt(100 * ov12$jaccard), "%")), cols3)
+txt34 <- text_block("PC3 x PC4 (area in PC units2)",
+                    c(paste0(Species1, " area: ", fmt(ov34$area1)),
+                      paste0(Species2, " area: ", fmt(ov34$area2)),
+                      paste0("Overlap: ", fmt(100 * ov34$jaccard), "%")), cols3)
+txt4D <- text_block(paste0("4-D, PC1 to PC4 (volume in PC units4), ", b, " m buffer"),
+                    c(paste0(Species1, " volume: ", fmt(v1, 0)),
+                      paste0(Species2, " volume: ", fmt(v2, 0)),
+                      paste0("Overlap: ", fmt(100 * ov4D$percentOverlap), "%")), cols3)
 
-print(overlap_panel(ov12, c(1, 2)) + overlap_panel(ov34, c(3, 4)) +
-        patchwork::plot_annotation(title = paste(Species1, "vs", Species2), caption = captionText,
-                                   theme = theme(plot.caption = element_text(hjust = 0, size = 9))))
+print(patchwork::wrap_plots(list(A = overlap_panel(ov12, c(1, 2)), B = overlap_panel(ov34, c(3, 4)),
+                                 C = txt12, D = txt34, E = txt4D),
+                            design = "AB\nCD\nE#", heights = c(5, 1.3, 1.3)))
 ggsave(paste0("OverlapPoly_", gsub("[^A-Za-z]", "", Species1), "_", gsub("[^A-Za-z]", "", Species2),
-              "_buffer", b, "m_20261123.pdf"), height = 5.5, width = 11)
+              "_buffer", b, "m_20261124.pdf"), height = 7.5, width = 11)
 
 
 ################################################################################
-# 17) Species areas and pairwise overlaps: PC1 x PC2, PC3 x PC4 and 4-D
+# 17) Species niche areas and pairwise overlaps: PC1 x PC2, PC3 x PC4 and 4-D
 ################################################################################
 # 23 Nov 2026. Section 15 already calculated, for each buffer, every species'
 # PC1 x PC2 area, PC3 x PC4 area and 4-D volume, and the pairwise 4-D overlaps.
@@ -1697,7 +1720,38 @@ ggplot() +
   theme(legend.position = "bottom")
 ggsave("FigureS_rangeExtents_20261123.pdf", height = 7, width = 7)
 
-# RUNNING LEFT OFF HERE ######
+
+# are range overlaps zero-inflated? (reviewer comment) ---------------------------
+# 24 Nov 2026. Distribution of pairwise % range overlap for each extent, for the
+# 89 analysis species (excluded species as in section 20). Exact zeros (ranges
+# do not touch) are counted separately and shown in each panel; pairs where
+# neither range reaches the extent (NA, study extent) are left out.
+histSpecies <- setdiff(speciesCols, c("Woodhouse's Scrub-Jay", "Red-breasted Sapsucker",
+                                      "Red-naped Sapsucker")) # = analysisSpecies, section 20
+histData <- rangeOverlaps %>%
+  filter(species1 %in% histSpecies, species2 %in% histSpecies) %>%
+  mutate(extent = factor(extent, levels = names(extents)))
+
+zeroSummary <- histData %>%
+  group_by(extent) %>%
+  dplyr::summarise(pairs = n(),
+                   noRangeInExtent = sum(is.na(percentOverlap)),
+                   exactZero = sum(overlapArea_km2 == 0 & !is.na(percentOverlap)),
+                   pctZero = round(100 * exactZero / (pairs - noRangeInExtent), 1),
+                   exact100 = sum(percentOverlap >= 99.999, na.rm = TRUE),
+                   medianOverlap = round(median(percentOverlap, na.rm = TRUE), 1),
+                   .groups = "drop")
+zeroSummary
+
+ggplot(filter(histData, !is.na(percentOverlap)), aes(x = percentOverlap)) +
+  geom_histogram(binwidth = 2, boundary = 0, fill = "grey40", colour = "white", linewidth = 0.1) +
+  geom_text(data = zeroSummary, aes(x = 98, y = Inf, label = paste0(pctZero, "% of pairs = 0")),
+            hjust = 1, vjust = 1.5, size = 3.5) +
+  facet_wrap(~ extent, scales = "free_y") +
+  labs(x = "Breeding range overlap (%)", y = "Species pairs") +
+  theme_minimal()
+ggsave("FigureS_rangeOverlapHistograms_20261124.pdf", height = 6, width = 8)
+
 
 ################################################################################
 # 19) Range overlap maps (two species)
@@ -1713,9 +1767,9 @@ ggsave("FigureS_rangeExtents_20261123.pdf", height = 7, width = 7)
 # `rangeOverlaps` from section 18.
 
 # choose species ---------------------------------------------------------------
-Species1 <- "California Scrub-Jay"
-Species2 <- "Woodhouse's Scrub-Jay"
 sort(ranges$species)
+Species1 <- "Olive-sided Flycatcher"
+Species2 <- "Pacific-slope Flycatcher"
 
 col1 <- "#25b9be"; col2 <- "#e41a1c"; colOverlap <- "#8849a5"
 naAlbers <- "ESRI:102008" # North America Albers Equal Area
@@ -1800,15 +1854,24 @@ print(patchwork::wrap_plots(mapNA, mapStudy, range_text("NorthAm", "North Americ
 ggsave(paste0("RangeOverlap_", gsub("[^A-Za-z]", "", Species1), "_", gsub("[^A-Za-z]", "", Species2),
               "_20261123.pdf"), height = 7, width = 12)
 
+# RUNNING LEFT OFF HERE ######
 
 ################################################################################
 # 20) Combine range overlaps and niche overlaps
 ################################################################################
+# 24 Nov 2026. One table for every combination of buffer size (section 17,
+# pairwiseOverlapsBuffers) and range extent (section 18, rangeOverlapsList),
+# with one row per species pair. Before joining, each pair is put in
+# alphabetical order (species1 < species2) in both tables, and the
+# species-specific columns (area1/area2, volume1/volume2) are swapped with the
+# names, so a pair listed as (A, B) in one table and (B, A) in the other still
+# matches correctly. Congeneric pairs and the remaining sister-species pairs are
+# marked for sections 21 onward. All % overlaps are Jaccard x 100.
 
 # species excluded from the analyses -------------------------------------------
 # 23 Nov 2026. Woodhouse's Scrub-Jay: detected at 321 sites, none inside its
 # eBird breeding range; 21% of its detections share a BirdNET segment with
-# California Scrub-Jay (crossIdentification_species_20261123.csv), and away from
+# California Scrub-Jay (crossIdentification_species_20261124.csv), and away from
 # its range it is detected at ~3-6% of the California Scrub-Jay rate, so most
 # detections are likely misidentified California Scrub-Jays. California
 # Scrub-Jay is kept (0.8% of its detections shared). Removing a species does not
@@ -1820,188 +1883,191 @@ ggsave(paste0("RangeOverlap_", gsub("[^A-Za-z]", "", Species1), "_", gsub("[^A-Z
 excludedSpecies <- c("Woodhouse's Scrub-Jay", "Red-breasted Sapsucker", "Red-naped Sapsucker")
 analysisSpecies <- setdiff(speciesCols, excludedSpecies)
 length(analysisSpecies) # 89 species
+nPairs <- choose(length(analysisSpecies), 2) # 3,916 pairs
 
-# ensure column names are informative ------------------------------------------
-NicheOverlap <- percentOverlap[, c("species1", "species2", "percentOverlap")]
-names(NicheOverlap)[names(NicheOverlap) == 'percentOverlap'] <- 'niche_overlap_percent'
+# genus of each species (from the scientific names; the sapsucker complex is
+# "Sphyrapicus ruber/nuchalis", so its genus is Sphyrapicus)
+sciNames <- distinct(commonNames, common_name, scientific_name)
+genus <- setNames(word(sciNames$scientific_name, 1), sciNames$common_name)
+stopifnot(all(analysisSpecies %in% names(genus)))
 
-rangeOverlaps <- rangeOverlaps[, c("species1", "species2", "overlap_percent")]
-names(rangeOverlaps)[names(rangeOverlaps) == "overlap_percent"] <- "range_overlap_percent" 
+# sister-species pairs among the analysis species (alphabetical order)
+sisterPairs <- c("Cassin's Finch|Purple Finch", "Cassin's Vireo|Plumbeous Vireo")
 
+# put each pair in alphabetical order, swapping the paired columns with it ------
+order_pair <- function(df, pairedCols) {
+  df <- as.data.frame(df)
+  swap <- df$species1 > df$species2
+  df[swap, c("species1", "species2")] <- df[swap, c("species2", "species1")]
+  for (pc in pairedCols) df[swap, pc] <- df[swap, rev(pc)]
+  df
+}
+keep_analysis <- function(df) filter(df, species1 %in% analysisSpecies, species2 %in% analysisSpecies)
 
-# match species name formats ---------------------------------------------------
-dotVclean_nameMatches <-  read.csv(file.path(base_dir, "dotVclean_nameMatches.csv"))
+nichePaired <- list(c("area1_PC12", "area2_PC12"), c("area1_PC34", "area2_PC34"),
+                    c("volume1_4D", "volume2_4D"))
+rangePaired <- list(c("range_area1_km2", "range_area2_km2"))
 
-NicheOverlap <- merge(NicheOverlap, dotVclean_nameMatches, by.x = "species1", by.y = "dotName")
-NicheOverlap$species1 <- NULL
-names(NicheOverlap)[names(NicheOverlap) == "cleanName"] <- "species1"
+# combine ----------------------------------------------------------------------
+nicheRangeOverlaps <- list()
+for (b in names(pairwiseOverlapsBuffers)) {
+  niche <- pairwiseOverlapsBuffers[[b]] %>% keep_analysis() %>% order_pair(nichePaired)
+  for (e in names(rangeOverlapsList)) {
+    range <- rangeOverlapsList[[e]] %>%
+      keep_analysis() %>%
+      transmute(species1, species2,
+                range_area1_km2 = area1_km2, range_area2_km2 = area2_km2,
+                range_overlapArea_km2 = overlapArea_km2,
+                range_percentOverlap = percentOverlap) %>%
+      order_pair(rangePaired)
+    stopifnot(nrow(niche) == nPairs, nrow(range) == nPairs,
+              !anyDuplicated(niche[c("species1", "species2")]),
+              !anyDuplicated(range[c("species1", "species2")]))
 
-NicheOverlap <- merge(NicheOverlap, dotVclean_nameMatches, by.x = "species2", by.y = "dotName")
-NicheOverlap$species2 <- NULL
-names(NicheOverlap)[names(NicheOverlap) == "cleanName"] <- "species2"
+    combined <- inner_join(niche, range, by = c("species1", "species2")) %>%
+      mutate(buffer_m = as.numeric(b), extent = e,
+             genus1 = unname(genus[species1]), genus2 = unname(genus[species2]),
+             congeneric = if_else(genus1 == genus2, "Same Genus", "Different Genus"),
+             sisterSpecies = paste(species1, species2, sep = "|") %in% sisterPairs) %>%
+      relocate(buffer_m, extent, genus1, genus2, congeneric, sisterSpecies, .after = species2)
+    stopifnot(nrow(combined) == nPairs) # every pair matched once
 
-# merge ------------------------------------------------------------------------
+    nicheRangeOverlaps[[paste0("buffer", b, "m_", e)]] <- combined
+  }
+}
 
-# Merge when species1 = species1 and species2 = species2
-merge1 <- merge(NicheOverlap, rangeOverlaps, by = c("species1", "species2"))
+# checks -----------------------------------------------------------------------
+names(nicheRangeOverlaps)  # 3 buffers x 4 extents = 12 tables
+sapply(nicheRangeOverlaps, nrow)
+table(nicheRangeOverlaps[[1]]$congeneric)    # 37 Same Genus, 3,879 Different Genus
+sum(nicheRangeOverlaps[[1]]$sisterSpecies)   # 2
+# pairs whose ranges do not reach the extent at all have NA range overlap - none of these
+sapply(nicheRangeOverlaps, function(x) sum(is.na(x$range_percentOverlap)))
 
-# Merge when species1 = species2 and species2 = species1
-merge2 <- merge(NicheOverlap, rangeOverlaps, by.x = c("species1", "species2"), by.y = c("species2", "species1"))
+# save -------------------------------------------------------------------------
+write_rds(nicheRangeOverlaps, "nicheRangeOverlaps_allBuffersExtents_20261124.rds")
+write_csv(bind_rows(nicheRangeOverlaps), "nicheRangeOverlaps_allBuffersExtents_20261124.csv")
 
-# Combine both merged dataframes
-NicheRangeOverlap <- rbind(merge1, merge2)
-
-################################################################################
-# 21) plot range vs niche overlap
-################################################################################
-
-# mark congeneric pairs --------------------------------------------------------
-
-# load scientific names
-SciNames <- read.csv(file.path(base_dir, "species_scientificNames.csv"))
-SciNames <- SciNames[, c("Species", "genus")]
-
-# Join to get genus for species1 and species2
-NicheRangeOverlap <- NicheRangeOverlap %>% left_join(SciNames, by = c("species1" = "Species"))
-NicheRangeOverlap <- NicheRangeOverlap %>% rename("genus_species1" = "genus")
-
-NicheRangeOverlap <- NicheRangeOverlap %>% left_join(SciNames, by = c("species2" = "Species"))
-NicheRangeOverlap <- NicheRangeOverlap %>% rename("genus_species2" = "genus")
-
-# Create the 'congeneric' column to check if species1 and species2 belong to the same genus
-NicheRangeOverlap <- NicheRangeOverlap %>%
-  mutate(congeneric = if_else(genus_species1 == genus_species2, "Same Genus", "Different Genus"))
-
-# drop units from range
-NicheRangeOverlap$range_overlap_percent <- drop_units(NicheRangeOverlap$range_overlap_percent)
-
-# add sister species -----------------------------------------------------------
-
-NicheRangeOverlap$sisterSpecies <- ifelse(NicheRangeOverlap$species1 == "California Scrub-Jay" & NicheRangeOverlap$species2 == "Woodhouse's Scrub-Jay" |
-                                            NicheRangeOverlap$species1 == "Red-breasted Sapsucker" & NicheRangeOverlap$species2 == "Red-naped Sapsucker" |
-                                            NicheRangeOverlap$species2 == "Plumbeous Vireo" & NicheRangeOverlap$species1 == "Cassin's Vireo" |
-                                            NicheRangeOverlap$species2 == "Purple Finch" & NicheRangeOverlap$species1 == "Cassin's Finch",
-                                          TRUE, FALSE)
-
-# save it ----------------------------------------------------------------------
-#write.csv(NicheRangeOverlap, "NicheRangeOverlap_cleanNames_20250624.csv")
-#write_rds(NicheRangeOverlap, "NicheRangeOverlap_cleanNames_20250624.rds")
-NicheRangeOverlap <- readRDS(file.path(base_dir, "NicheRangeOverlap_cleanNames_20250624.rds"))
-
-# make dot names version -------------------------------------------------------
-
-NicheRangeOverlapDot <- merge(NicheRangeOverlap, dotVclean_nameMatches, by.x = "species1", by.y = "cleanName")
-NicheRangeOverlapDot$species1 <- NULL
-names(NicheRangeOverlapDot)[names(NicheRangeOverlapDot) == "dotName"] <- "species1"
-
-NicheRangeOverlapDot <- merge(NicheRangeOverlapDot, dotVclean_nameMatches, by.x = "species2", by.y = "cleanName")
-NicheRangeOverlapDot$species2 <- NULL
-names(NicheRangeOverlapDot)[names(NicheRangeOverlapDot) == "dotName"] <- "species2"
-
-# save dot version -------------------------------------------------------------
-
-#write.csv(NicheRangeOverlapDot, "NicheRangeOverlap_dotNames_20250624.csv")
-#write_rds(NicheRangeOverlapDot, "NicheRangeOverlap_dotNames_20250624.rds")
-NicheRangeOverlapDot <- readRDS("NicheRangeOverlap_dotNames_20250624.rds")
-
-# remove potentially cross-identified sister species ---------------------------
-
-# remove sapsucker sister species
-NicheRangeOverlapDot <- NicheRangeOverlapDot[!((NicheRangeOverlapDot$species1 == "Red.breasted.Sapsucker" & NicheRangeOverlapDot$species2 == "Red.naped.Sapsucker") | 
-                                                 (NicheRangeOverlapDot$species1 == "Red.naped.Sapsucker" & NicheRangeOverlapDot$species2 == "Red.breasted.Sapsucker")), ]
-# remove vireo sister species
-NicheRangeOverlapDot <- NicheRangeOverlapDot[!((NicheRangeOverlapDot$species1 == "Cassin.s.Vireo" & NicheRangeOverlapDot$species2 == "Plumbeous.Vireo") | 
-                                                 (NicheRangeOverlapDot$species1 == "Plumbeous.Vireo" & NicheRangeOverlapDot$species2 == "Cassin.s.Vireo")), ]
-# plot the updated data (linear model)
-ggplot(NicheRangeOverlapDot, aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
-  geom_smooth(aes(fill = congeneric), method = "lm", alpha = 0.2) +  
-  theme_minimal() +
-  scale_color_manual(values = c("purple", "darkgreen")) +
-  scale_fill_manual(values = c("purple", "darkgreen")) +  
-  geom_point(data=subset(NicheRangeOverlapDot, NicheRangeOverlapDot$sisterSpecies==TRUE), color="black") +
-  theme(legend.title = element_blank()) +
-  stat_poly_eq(aes(label = after_stat(eq.label)), formula = y ~ x, parse = TRUE) + # ggpmisc
-  scale_x_continuous(labels = percent_format(accuracy = 1)) +
-  scale_y_continuous(labels = percent_format(accuracy = 1)) +
-  xlab("Niche Overlap (%)") +
-  ylab("Range Overlap (%)")
-ggsave("NicheRangeOverlap_light_20260706.pdf", height=5, width=7)
-
-# make supp figure with points (linear model)
-ggplot(NicheRangeOverlapDot, aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
-  geom_point(alpha=0.2) +
-  scale_color_manual(values = c("purple", "darkgreen")) +
-  scale_fill_manual(values = c("purple", "darkgreen")) +
-  facet_grid(~congeneric) +
-  scale_x_continuous(labels = percent_format(accuracy = 1)) +
-  scale_y_continuous(labels = percent_format(accuracy = 1)) +
-  stat_poly_eq(aes(label = after_stat(eq.label)), formula = y ~ x, parse = TRUE) +
-  xlab("Niche Overlap (%)") +
-  ylab("Range Overlap (%)") +
-  geom_smooth(aes(fill = congeneric), method = "lm", alpha = 0.2) +
-  theme_minimal()
-ggsave("NicheRangeOverlap_points_20260706.pdf", height=5, width=7)
+# main analysis: 150 m buffer, full breeding ranges (used in sections 21 onward)
+NicheRangeOverlap <- nicheRangeOverlaps[["buffer150m_full"]]
 
 
 ################################################################################
-# 22) Mixed effects model
+# 21) Mixed effects models
 ################################################################################
+# 24 Nov 2026. One Bayesian mixed model for each of the 12 datasets from
+# section 20 (3 buffer sizes x 4 range extents), as before:
+#   range overlap ~ niche overlap * congeneric,  random = ~ mm(species1 + species2)
+# - Niche overlap is the 4-D acoustic-use space overlap; range overlap is the
+#   breeding range overlap for that extent. Both are Jaccard overlaps, used as
+#   proportions (0-1), the scale the priors were set for and that earlier
+#   results were reported on.
+# - No species pairs are excluded any more: the cross-identified taxa were
+#   handled in sections 2 and 20, so all 37 congeneric pairs are included.
+# - Pairs whose ranges both fall outside the extent (range overlap NA; study
+#   extent only) are dropped.
+# - The multiple-membership random effect accounts for each species appearing
+#   in many pairs. The sapsucker complex is one species level.
+# - 4 chains per model, run in parallel (forked processes, macOS/Linux).
+#   Chains are saved per dataset; if a saved file exists it is read instead of
+#   refitting, so the loop can be restarted where it stopped.
 
-# Mixed effects model - accounts for species non-independence (the same species appear in multiple pairs)
+# settings and helpers ---------------------------------------------------------
+nChains <- 4
+mcmcSettings <- list(nitt = 260000, burnin = 60000, thin = 200)
 
-# --- Prep ---
-# make sure mixed membership includes the same full set of species 
-all_species <- sort(unique(c(as.character(NicheRangeOverlapDot$species1),
-                             as.character(NicheRangeOverlapDot$species2))))
-NicheRangeOverlapDot$species1   <- factor(NicheRangeOverlapDot$species1, levels = all_species)
-NicheRangeOverlapDot$species2   <- factor(NicheRangeOverlapDot$species2, levels = all_species)
-NicheRangeOverlapDot$congeneric <- factor(NicheRangeOverlapDot$congeneric)
-
-# --- Prior: one multiple-membership random effect (G) + residual (R) ---
-# Parameter-expanded prior on the random effect helps mixing.
 prior <- list(
   R = list(V = 1, nu = 0.002),
   G = list(G1 = list(V = 1, nu = 1, alpha.mu = 0, alpha.V = 1000))
 )
 
-# --- Model: lm fixed structure + species identity as an MM random effect ---
-chains <- lapply(1:4, function(i) {
-  set.seed(i)
-  MCMCglmm(range_overlap_percent ~ niche_overlap_percent * congeneric,
-           random = ~ mm(species1 + species2),
-           family = "gaussian", data = NicheRangeOverlapDot, prior = prior,
-           nitt = 260000, burnin = 60000, thin = 200, verbose = FALSE)
-})
-gelman.diag(mcmc.list(lapply(chains, function(m) m$Sol)))  
+# model data: proportions, species factors with the same levels in both columns
+prep_model_data <- function(df) {
+  d <- df %>%
+    transmute(species1, species2, sisterSpecies,
+              congeneric = factor(congeneric, levels = c("Different Genus", "Same Genus")),
+              niche_overlap_percent = percentOverlap_4D / 100,
+              range_overlap_percent = range_percentOverlap / 100) %>%
+    filter(!is.na(range_overlap_percent))
+  sp <- sort(unique(c(d$species1, d$species2)))
+  d$species1 <- factor(d$species1, levels = sp)
+  d$species2 <- factor(d$species2, levels = sp)
+  d
+}
 
-write_rds(chains, "MixedEffectsModel_4chains_20260713.RDS")
+fit_chains <- function(d) {
+  parallel::mclapply(seq_len(nChains), function(i) {
+    set.seed(i)
+    MCMCglmm(range_overlap_percent ~ niche_overlap_percent * congeneric,
+             random = ~ mm(species1 + species2),
+             family = "gaussian", data = d, prior = prior,
+             nitt = mcmcSettings$nitt, burnin = mcmcSettings$burnin,
+             thin = mcmcSettings$thin, verbose = FALSE)
+  }, mc.cores = nChains)
+}
 
-# --- Bundle the 4 chains ---
+# pMCMC from posterior draws (same definition MCMCglmm uses)
+p_from_draws <- function(x) 2 * max(0.5 / length(x), min(mean(x > 0), mean(x < 0)))
+ci <- function(x) sprintf("%.2f [%.2f, %.2f]", mean(x), quantile(x, 0.025), quantile(x, 0.975))
+
+# fit all 12 models ------------------------------------------------------------
+modelChains <- list(); modelResults <- list()
+for (k in names(nicheRangeOverlaps)) {
+  d <- prep_model_data(nicheRangeOverlaps[[k]])
+  f <- paste0("MixedEffectsModel_", k, "_4chains_20261124.rds")
+  if (file.exists(f)) {
+    chains <- read_rds(f)
+  } else {
+    chains <- fit_chains(d)
+    write_rds(chains, f)
+  }
+  modelChains[[k]] <- chains
+
+  # convergence and pooled posterior
+  sol_list <- mcmc.list(lapply(chains, function(m) m$Sol))
+  sol <- do.call(rbind, lapply(chains, function(m) m$Sol))
+  rhat <- gelman.diag(sol_list)$psrf[, "Point est."]
+  ess  <- effectiveSize(sol_list)
+  slopeDiff <- sol[, "niche_overlap_percent:congenericSame Genus"]
+  slopeHet  <- sol[, "niche_overlap_percent"]
+  slopeCon  <- slopeHet + slopeDiff
+
+  modelResults[[k]] <- tibble(
+    dataset = k, buffer_m = nicheRangeOverlaps[[k]]$buffer_m[1], extent = nicheRangeOverlaps[[k]]$extent[1],
+    nPairs = nrow(d), nCongeneric = sum(d$congeneric == "Same Genus"),
+    slope_differentGenus = ci(slopeHet), slope_sameGenus = ci(slopeCon),
+    slope_difference = ci(slopeDiff), pMCMC = p_from_draws(slopeDiff),
+    max_Rhat = round(max(rhat), 3), min_ESS = round(min(ess)))
+  message(k, " done")
+}
+
+modelSummary <- bind_rows(modelResults)
+modelSummary
+write_csv(modelSummary, "MixedEffectsModels_summary_20261124.csv") # supplementary table
+
+# main model: convergence plots and figures --------------------------------------
+figKey  <- "buffer150m_full"   # 150 m buffer, full breeding ranges
+figData <- prep_model_data(nicheRangeOverlaps[[figKey]])
+chains  <- modelChains[[figKey]]
+
 sol_list <- mcmc.list(lapply(chains, function(m) m$Sol))   # fixed effects
-vcv_list <- mcmc.list(lapply(chains, function(m) m$VCV))   # variance components
-
-# --- Convergence checks across all 4 chains ---
 gelman.diag(sol_list)      # R-hat: point est + upper CI (want ~1.00)
 gelman.plot(sol_list)      # shows R-hat settling to 1 as iterations accrue
 plot(sol_list)             # trace + density; want all 4 chains overlapping in one band
 effectiveSize(sol_list)    # pooled ESS across chains (~4,000 if each was ~1,000)
 autocorr.diag(sol_list)    # autocorrelation should drop off fast
 
-# --- Pool chains for the reported posterior (inference) ---
+# pooled posterior
 sol_all <- do.call(rbind, lapply(chains, function(m) m$Sol))
 vcv_all <- do.call(rbind, lapply(chains, function(m) m$VCV))
-apply(sol_all, 2, mean)                 # posterior means
+apply(sol_all, 2, mean)                         # posterior means
 t(apply(sol_all, 2, quantile, c(.025, .975)))   # 95% credible intervals
 
-
 # ---- Build fitted lines from the POOLED posterior (all 4 chains) ----
-sol  <- sol_all                                          # pooled draws, ~4,000 samples
-lev  <- levels(NicheRangeOverlapDot$congeneric)          # lev[1] = reference (heterogeneric)
-xseq <- seq(min(NicheRangeOverlapDot$niche_overlap_percent),
-            max(NicheRangeOverlapDot$niche_overlap_percent), length.out = 100)
-
-# pMCMC computed directly from the pooled draws (same definition MCMCglmm uses)
-p_from_draws <- function(x) 2 * max(0.5 / length(x), min(mean(x > 0), mean(x < 0)))
+sol  <- sol_all
+lev  <- levels(figData$congeneric)          # lev[1] = reference (heterogeneric)
+xseq <- seq(min(figData$niche_overlap_percent),
+            max(figData$niche_overlap_percent), length.out = 100)
 
 dslope <- sol[, "niche_overlap_percent:congenericSame Genus"]
 pmc    <- p_from_draws(dslope)
@@ -2030,26 +2096,27 @@ pred_df <- do.call(rbind, lapply(lev, function(g) {
 }))
 pred_df$congeneric <- factor(pred_df$congeneric, levels = lev)
 
-# slope labels (posterior mean + 95% credible interval)
+# slope labels (posterior mean + 95% credible interval), placed near the top
+yTop <- max(pred_df$upper)
 lab_df <- do.call(rbind, lapply(lev, function(g) {
   b1 <- coefs(g)$b1
   data.frame(congeneric = factor(g, levels = lev),
              label = sprintf("slope = %.2f [%.2f, %.2f]",
                              mean(b1), quantile(b1, 0.025), quantile(b1, 0.975)))
 }))
-lab_df$x <- 0  # left side
-lab_df$y <- c(0.43, 0.40)[seq_along(lev)]   # stacked
-eff_df <- data.frame(x = min(xseq), y = 0.37, label = eff_label)
+lab_df$x <- min(xseq)
+lab_df$y <- yTop * c(1.15, 1.08)[seq_along(lev)]
+eff_df <- data.frame(x = min(xseq), y = yTop * 1.01, label = eff_label)
 
 # ---- Plot it ----
 # Figure 8
-ggplot(NicheRangeOverlapDot,
+ggplot(figData,
        aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
   geom_ribbon(data = pred_df,
               aes(y = fit, ymin = lower, ymax = upper, fill = congeneric),
               alpha = 0.2, color = NA) +
   geom_line(data = pred_df, aes(y = fit), linewidth = 1) +
-  #geom_point(data = subset(NicheRangeOverlapDot, sisterSpecies == TRUE), color = "black") +
+  geom_point(data = subset(figData, sisterSpecies == TRUE), color = "black") +
   geom_text(data = lab_df, aes(x = x, y = y, label = label),
             hjust = 0, show.legend = FALSE) +
   geom_text(data = eff_df, aes(x = x, y = y, label = label),
@@ -2062,17 +2129,17 @@ ggplot(NicheRangeOverlapDot,
   theme(legend.title = element_blank()) +
   xlab("Niche Overlap (%)") +
   ylab("Range Overlap (%)")
-ggsave("NicheRangeOverlap_points_20260713.pdf", height=5, width=7)
+ggsave(paste0("Figure8_NicheRangeOverlap_", figKey, "_20261124.pdf"), height = 5, width = 7)
 
-# supp figure 
-ggplot(NicheRangeOverlapDot,
+# supp figure: raw pairs with the fitted lines, one panel per group
+ggplot(figData,
        aes(x = niche_overlap_percent, y = range_overlap_percent, color = congeneric)) +
   geom_ribbon(data = pred_df,
               aes(y = fit, ymin = lower, ymax = upper, fill = congeneric),
               alpha = 0.2, color = NA) +
   geom_point(alpha = 0.2) +
   geom_line(data = pred_df, aes(y = fit), linewidth = 1) +
-  geom_text(data = lab_df, aes(x = x, y = y+0.3, label = label),
+  geom_text(data = lab_df, aes(x = x, y = max(figData$range_overlap_percent) * 1.05, label = label),
             hjust = 0, show.legend = FALSE) +
   scale_color_manual(values = c("purple", "darkgreen")) +
   scale_fill_manual(values = c("purple", "darkgreen")) +
@@ -2083,9 +2150,10 @@ ggplot(NicheRangeOverlapDot,
   theme(legend.position = "none") +
   xlab("Niche Overlap (%)") +
   ylab("Range Overlap (%)")
-ggsave("NicheRangeOverlap_points_20260706.pdf", height=5, width=7)
+ggsave(paste0("FigureS_NicheRangeOverlap_points_", figKey, "_20261124.pdf"), height = 5, width = 7)
 
-ggplot(subset(NicheRangeOverlapDot, NicheRangeOverlapDot$congeneric=="Same Genus"),
+# congeneric pairs only, sister species in black
+ggplot(subset(figData, congeneric == "Same Genus"),
        aes(x = niche_overlap_percent, y = range_overlap_percent, color = sisterSpecies)) +
   geom_point(alpha = 0.8) +
   scale_color_manual(values = c("darkgreen", "black")) +
@@ -2096,6 +2164,84 @@ ggplot(subset(NicheRangeOverlapDot, NicheRangeOverlapDot$congeneric=="Same Genus
   theme(legend.position = "none") +
   xlab("Niche Overlap (%)") +
   ylab("Range Overlap (%)")
+
+
+################################################################################
+# 22) Leave-one-genus-out models (main dataset)
+################################################################################
+# 24 Nov 2026. Reviewer request: is the congeneric vs heterogeneric difference
+# driven by a single genus? Main dataset only (150 m buffer, full breeding
+# ranges). For each genus with at least one congeneric pair, all of its species
+# and every pair involving them are removed and the section 21 model is refitted.
+# Uses prep_model_data(), fit_chains(), prior, mcmcSettings, p_from_draws() and
+# ci() from section 21. Chains are saved per genus and re-read if present, so
+# the loop can be restarted where it stopped.
+
+logoKey  <- "buffer150m_full"
+logoData <- nicheRangeOverlaps[[logoKey]]
+congenericGenera <- sort(unique(logoData$genus1[logoData$congeneric == "Same Genus"]))
+length(congenericGenera) # 16 genera
+
+# slope summaries from a list of chains (numbers for the figure, text for the table)
+summarise_chains <- function(chains) {
+  sol_list <- mcmc.list(lapply(chains, function(m) m$Sol))
+  sol <- do.call(rbind, lapply(chains, function(m) m$Sol))
+  slopeDiff <- sol[, "niche_overlap_percent:congenericSame Genus"]
+  slopeHet  <- sol[, "niche_overlap_percent"]
+  slopeCon  <- slopeHet + slopeDiff
+  tibble(slope_differentGenus = ci(slopeHet), slope_sameGenus = ci(slopeCon),
+         slope_difference = ci(slopeDiff), pMCMC = p_from_draws(slopeDiff),
+         diff_mean = mean(slopeDiff), diff_lower = quantile(slopeDiff, 0.025),
+         diff_upper = quantile(slopeDiff, 0.975),
+         max_Rhat = round(max(gelman.diag(sol_list)$psrf[, "Point est."]), 3),
+         min_ESS = round(min(effectiveSize(sol_list))))
+}
+
+logoResults <- list()
+for (g in congenericGenera) {
+  d <- logoData %>% filter(genus1 != g, genus2 != g) %>% prep_model_data()
+  f <- paste0("MixedEffectsModel_LOGO_", g, "_", logoKey, "_4chains_20261124.rds")
+  if (file.exists(f)) {
+    chains <- read_rds(f)
+  } else {
+    chains <- fit_chains(d)
+    write_rds(chains, f)
+  }
+  logoResults[[g]] <- bind_cols(
+    tibble(genusRemoved = g, speciesRemoved = sum(genus[analysisSpecies] == g),
+           nPairs = nrow(d), nCongeneric = sum(d$congeneric == "Same Genus")),
+    summarise_chains(chains))
+  message(g, " done")
+}
+
+# full model (section 21) for comparison
+fullChains <- if (exists("modelChains") && !is.null(modelChains[[logoKey]])) modelChains[[logoKey]] else
+  read_rds(paste0("MixedEffectsModel_", logoKey, "_4chains_20261124.rds"))
+fullModel <- bind_cols(
+  tibble(genusRemoved = "none (full model)", speciesRemoved = 0,
+         nPairs = nrow(prep_model_data(logoData)),
+         nCongeneric = sum(logoData$congeneric == "Same Genus")),
+  summarise_chains(fullChains))
+
+logoSummary <- bind_rows(fullModel, bind_rows(logoResults))
+logoSummary %>% dplyr::select(genusRemoved, nCongeneric, slope_difference, pMCMC, max_Rhat)
+write_csv(logoSummary, "MixedEffectsModels_leaveOneGenusOut_20261124.csv") # supplementary table
+
+# supplemental figure: slope difference with each genus removed -------------------
+logoPlot <- bind_rows(logoResults) %>%
+  mutate(genusRemoved = factor(genusRemoved, levels = rev(congenericGenera)))
+ggplot(logoPlot, aes(x = diff_mean, y = genusRemoved)) +
+  annotate("rect", xmin = fullModel$diff_lower, xmax = fullModel$diff_upper,
+           ymin = -Inf, ymax = Inf, fill = "grey85") +
+  geom_vline(xintercept = fullModel$diff_mean, linetype = "dashed") +
+  geom_vline(xintercept = 0, colour = "grey40") +
+  geom_pointrange(aes(xmin = diff_lower, xmax = diff_upper), colour = "darkgreen") +
+  labs(x = "Difference in slopes, congeneric minus heterogeneric (95% CI)",
+       y = "Genus removed") +
+  theme_minimal() +
+  theme(axis.text.y = element_text(face = "italic"))
+ggsave("FigureS_leaveOneGenusOut_20261124.pdf", height = 6, width = 7)
+
 
 ################################################################################
 # 23) permutation test
