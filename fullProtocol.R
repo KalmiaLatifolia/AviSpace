@@ -49,14 +49,14 @@ library(ks)      # weighted kernel density (section 15)
 # 16) plot 2 species acoustic-use space overlap (test plot) - 1407
 # 17) Species niche areas and pairwise overlaps: PC1 x PC2, PC3 x PC4 and 4-D - 1502
 # 18) Range areas and pairwise range overlaps - 1571
-# 19) Range overlap maps (two species) - 1757
-# 20) Combine range overlaps and niche overlaps - 1860
-# 21) Mixed effects models - 1956
-# 22) Leave-one-genus-out models (main dataset) - 2170
-# 23) permutation test - 2247
-# 24) Figure 4 niche areas - 2290
-# 25) Figure 5 - matrix - 2306
-# 26) Species details supp table - 2445
+# 19) Range overlap maps (two species) - 1767
+# 20) Combine range overlaps and niche overlaps - 1870
+# 21) Mixed effects models - 1966
+# 22) Leave-one-genus-out models (main dataset) - 2180
+# 23) permutation test - 2257
+# 24) Figure 4 niche areas - 2300
+# 25) Figure 5 - matrix - 2316
+# 26) Species details supp table - 2455
 
 
 # working directory  -----------------------------------------------------------
@@ -1723,33 +1723,45 @@ ggsave("FigureS_rangeExtents_20261123.pdf", height = 7, width = 7)
 
 # are range overlaps zero-inflated? (reviewer comment) ---------------------------
 # 24 Nov 2026. Distribution of pairwise % range overlap for each extent, for the
-# 89 analysis species (excluded species as in section 20). Exact zeros (ranges
-# do not touch) are counted separately and shown in each panel; pairs where
-# neither range reaches the extent (NA, study extent) are left out.
+# 89 analysis species (excluded species as in section 20). All zeros are kept:
+#   - ranges that do not touch (shared area 0)
+#   - pairs where neither range reaches the extent (study extent only; overlap
+#     is 0/0 = NA in rangeOverlaps), counted here as 0% overlap
+# Zeros are shown as a separate colour in the first bar of each histogram.
 histSpecies <- setdiff(speciesCols, c("Woodhouse's Scrub-Jay", "Red-breasted Sapsucker",
                                       "Red-naped Sapsucker")) # = analysisSpecies, section 20
 histData <- rangeOverlaps %>%
   filter(species1 %in% histSpecies, species2 %in% histSpecies) %>%
-  mutate(extent = factor(extent, levels = names(extents)))
+  mutate(extent = factor(extent, levels = names(extents)),
+         noRangeInExtent = is.na(percentOverlap),
+         overlap = ifelse(noRangeInExtent, 0, percentOverlap),
+         zero = overlapArea_km2 == 0)
 
 zeroSummary <- histData %>%
   group_by(extent) %>%
   dplyr::summarise(pairs = n(),
-                   noRangeInExtent = sum(is.na(percentOverlap)),
-                   exactZero = sum(overlapArea_km2 == 0 & !is.na(percentOverlap)),
-                   pctZero = round(100 * exactZero / (pairs - noRangeInExtent), 1),
-                   exact100 = sum(percentOverlap >= 99.999, na.rm = TRUE),
-                   medianOverlap = round(median(percentOverlap, na.rm = TRUE), 1),
+                   zeroOverlap = sum(zero),                # all pairs with no shared range
+                   pctZero = round(100 * zeroOverlap / pairs, 1),
+                   of_which_noRangeInExtent = sum(noRangeInExtent),
+                   exact100 = sum(overlap >= 99.999),
+                   meanOverlap = round(mean(overlap), 1),
+                   medianOverlap = round(median(overlap), 1),
                    .groups = "drop")
 zeroSummary
 
-ggplot(filter(histData, !is.na(percentOverlap)), aes(x = percentOverlap)) +
-  geom_histogram(binwidth = 2, boundary = 0, fill = "grey40", colour = "white", linewidth = 0.1) +
-  geom_text(data = zeroSummary, aes(x = 98, y = Inf, label = paste0(pctZero, "% of pairs = 0")),
-            hjust = 1, vjust = 1.5, size = 3.5) +
+ggplot(histData, aes(x = overlap, fill = zero)) +
+  geom_histogram(binwidth = 2, boundary = 0, colour = "white", linewidth = 0.1) +
+  scale_fill_manual(values = c(`FALSE` = "grey40", `TRUE` = "#e41a1c"),
+                    labels = c(`FALSE` = "Overlap > 0", `TRUE` = "No shared range (0%)"), name = NULL) +
+  geom_text(data = zeroSummary, aes(x = 98, y = Inf,
+                label = paste0("Pairs with 0% overlap: ", zeroOverlap, 
+                               "\nPairs with 100% overlap: ", exact100,
+                               "\nMean overlap: ", meanOverlap, "%")),
+            hjust = 1, vjust = 1.5, size = 3.5, inherit.aes = FALSE) +
   facet_wrap(~ extent, scales = "free_y") +
   labs(x = "Breeding range overlap (%)", y = "Species pairs") +
-  theme_minimal()
+  theme_minimal() +
+  theme(legend.position = "bottom")
 ggsave("FigureS_rangeOverlapHistograms_20261124.pdf", height = 6, width = 8)
 
 
