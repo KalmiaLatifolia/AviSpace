@@ -49,14 +49,14 @@ library(ks)      # weighted kernel density (section 15)
 # 16) plot 2 species acoustic-use space overlap (test plot) - 1407
 # 17) Species niche areas and pairwise overlaps: PC1 x PC2, PC3 x PC4 and 4-D - 1502
 # 18) Range areas and pairwise range overlaps - 1571
-# 19) Range overlap maps (two species) - 1767
-# 20) Combine range overlaps and niche overlaps - 1870
-# 21) Mixed effects models - 1966
-# 22) Leave-one-genus-out models (main dataset) - 2180
-# 23) permutation test - 2257
-# 24) Figure 4 niche areas - 2300
-# 25) Figure 5 - matrix - 2316
-# 26) Species details supp table - 2455
+# 19) Range overlap maps (two species) - 1769
+# 20) Combine range overlaps and niche overlaps - 1871
+# 21) Mixed effects models - 1967
+# 22) Leave-one-genus-out models (main dataset) - 2182
+# 23) permutation test - 2261
+# 24) Figure 4 acoustic-use space volumes - 2320
+# 25) Figure 5 - matrix - 2345
+# 26) Species details supp table - 2494
 
 
 # working directory  -----------------------------------------------------------
@@ -1780,8 +1780,8 @@ ggsave("FigureS_rangeOverlapHistograms_20261124.pdf", height = 6, width = 8)
 
 # choose species ---------------------------------------------------------------
 sort(ranges$species)
-Species1 <- "Olive-sided Flycatcher"
-Species2 <- "Pacific-slope Flycatcher"
+Species1 <- "Cassin's Vireo"
+Species2 <- "Plumbeous Vireo"
 
 col1 <- "#25b9be"; col2 <- "#e41a1c"; colOverlap <- "#8849a5"
 naAlbers <- "ESRI:102008" # North America Albers Equal Area
@@ -2052,7 +2052,6 @@ for (k in names(nicheRangeOverlaps)) {
   message(k, " done")
 }
 
-# RUNNING LEFT OFF HERE ######
 
 modelSummary <- bind_rows(modelResults)
 modelSummary
@@ -2259,33 +2258,40 @@ ggsave("FigureS_leaveOneGenusOut_20261124.pdf", height = 6, width = 7)
 ################################################################################
 # 23) permutation test
 ################################################################################
+# 24 Nov 2026. Could the congeneric vs heterogeneric slope difference arise by
+# chance from how species are grouped into genera? Genus labels are shuffled
+# across species (keeping the number of genera and their sizes), congeneric
+# status is recalculated for every pair, and the interaction (slope difference)
+# is refitted with a linear model. Main dataset (150 m buffer, full breeding
+# ranges), same variables as section 21: 4-D niche overlap and range overlap as
+# proportions. Uses nicheRangeOverlaps, analysisSpecies and genus from section 20.
 
-# ---- 1. Species -> genus map, straight from the genus columns ----
-sp_gen <- unique(rbind(
-  data.frame(species = as.character(NicheRangeOverlapDot$species1),
-             genus   = as.character(NicheRangeOverlapDot$genus_species1)),
-  data.frame(species = as.character(NicheRangeOverlapDot$species2),
-             genus   = as.character(NicheRangeOverlapDot$genus_species2))
-))
-genus_of <- setNames(sp_gen$genus, sp_gen$species)
+permKey  <- "buffer150m_full"
+permData <- nicheRangeOverlaps[[permKey]] %>%
+  transmute(species1, species2,
+            niche_overlap_percent = percentOverlap_4D / 100,
+            range_overlap_percent = range_percentOverlap / 100) %>%
+  filter(!is.na(range_overlap_percent))
 
-# ---- 2. Statistic: interaction (slope difference) from a given species->genus map ----
+# ---- 1. Species -> genus map (section 20) ----
+genus_of <- genus[analysisSpecies]
+stopifnot(!anyNA(genus_of))
+
+# ---- 2. Statistic: interaction (slope difference) for a given species -> genus map ----
 interaction_coef <- function(gmap) {
-  cong_status <- gmap[as.character(NicheRangeOverlapDot$species1)] ==
-    gmap[as.character(NicheRangeOverlapDot$species2)]
-  fit <- lm(range_overlap_percent ~ niche_overlap_percent * cong_status,
-            data = NicheRangeOverlapDot)
+  cong_status <- gmap[permData$species1] == gmap[permData$species2]
+  fit <- lm(range_overlap_percent ~ niche_overlap_percent * cong_status, data = permData)
   unname(coef(fit)["niche_overlap_percent:cong_statusTRUE"])
 }
 
 obs <- interaction_coef(genus_of)                     # observed slope difference
+sum(genus_of[permData$species1] == genus_of[permData$species2]) # 37 congeneric pairs
 
 # ---- 3. Null: shuffle genus labels across species (preserves genus-size distribution) ----
 set.seed(1)
 nperm   <- 5000
-species <- names(genus_of)
 null <- replicate(nperm, {
-  permuted <- setNames(sample(unname(genus_of)), species)
+  permuted <- setNames(sample(unname(genus_of)), names(genus_of))
   interaction_coef(permuted)
 })
 
@@ -2293,186 +2299,276 @@ null <- replicate(nperm, {
 p_perm <- (sum(abs(null) >= abs(obs)) + 1) / (nperm + 1)
 c(observed_slope_diff = obs, p_perm = p_perm)
 
-# optional: see where the observed value falls
-hist(null, breaks = 40, main = "Permutation null: slope difference",
-     xlab = "interaction coefficient"); abline(v = obs, col = "red", lwd = 2)
+write_rds(list(dataset = permKey, observed = obs, null = null, p = p_perm, nperm = nperm),
+          paste0("permutationTest_", permKey, "_20261124.rds"))
 
+# ---- 5. Supplemental figure ----
+ggplot(data.frame(null = null), aes(x = null)) +
+  geom_histogram(bins = 40, fill = "grey80", colour = "grey40", linewidth = 0.2) +
+  geom_vline(xintercept = obs, colour = "red", linewidth = 1) +
+  labs(title = "Permutation null: slope difference",
+       subtitle = paste0("Observed = ", round(obs, 2), ", p = ", signif(p_perm, 2),
+                         " (", format(nperm, big.mark = ","), " permutations)"),
+       x = "Interaction coefficient (difference in slopes)", y = "Frequency") +
+  theme_minimal()
+ggsave(paste0("FigureS_permutationTest_", permKey, "_20261124.pdf"), height = 5, width = 6)
 
 
 ################################################################################
-# 24) Figure 4 niche areas 
+# 24) Figure 4 acoustic-use space volumes
 ################################################################################
+# 24 Nov 2026. 4-D acoustic-use space volume (PC1-PC4, section 15) of each of
+# the 89 analysis species, sorted by size. Main dataset (150 m buffer). Uses
+# speciesAreasBuffers (section 17) and analysisSpecies (section 20).
 
-ggplot(NicheAreas, aes(x = reorder(species, area), y = area)) +
+b <- "150"
+volumes <- speciesAreasBuffers[[b]] %>%
+  filter(species %in% analysisSpecies)
+stopifnot(nrow(volumes) == length(analysisSpecies))
+
+ggplot(volumes, aes(x = reorder(species, volume4D), y = volume4D)) +
   geom_bar(stat = "identity", fill = "steelblue") +
   coord_flip() +  # Flip the coordinates to make it a horizontal bar chart
   labs(
     x = "Species",
-    y = "Niche Area",
-    title = "Species Niche Areas Sorted by Size"
+    y = "Acoustic-use space volume (PC units^4)",
+    title = "Species acoustic-use space volumes sorted by size"
   ) +
   theme_minimal()
 
-ggsave("NicheAreas_20250709.pdf", height=12, width=7)
+ggsave(paste0("Figure4_acousticUseSpaceVolumes_buffer", b, "m_20261124.pdf"), height = 12, width = 7)
+
 
 ################################################################################
 # 25) Figure 5 - matrix
 ################################################################################
+# 24 Nov 2026. Hierarchically clustered matrix of pairwise 4-D acoustic-use
+# space overlap (Jaccard, %, section 15) for the 89 analysis species, with a
+# bar plot of each species' 4-D volume. Main dataset (150 m buffer). Uses
+# pairwiseOverlapsBuffers and speciesAreasBuffers (section 17), siteDataBuffers
+# and traitsPCABuffers (section 12), analysisSpecies (section 20).
+# Bars are coloured by each species' detection-weighted mean PC1 score (the
+# centre of its acoustic-use space on PC1), replacing the old 2-D polygon
+# centroid. Colour legends are drawn under the figure (previously added by
+# hand). The land cover types on the PC1 legend sit at the mean PC1 score of
+# the sites of that type (previously placed by hand from Figure 3).
 
-# Heirarchical Matrix
+b <- "150"
 
-# bring back sister species ----------------------------------------------------
-NicheRangeOverlapDot <- readRDS("NicheRangeOverlap_dotNames_20250624.rds")
-speciesAreas <- readRDS("speciesNicheAreas_20250624.rds")
+# detection-weighted mean PC1 per species --------------------------------------
+pc1   <- traitsPCABuffers[[b]]$x[, 1]
+rates <- siteDataBuffers[[b]][, analysisSpecies]
+stopifnot(length(pc1) == nrow(rates))
+speciesPC1 <- tibble(species = analysisSpecies,
+                     PC1 = sapply(analysisSpecies, function(sp) weighted.mean(pc1, rates[[sp]])))
 
-# fill out the gaps in overlaps ------------------------------------------------
-selfOverlap <- data_frame(species1 = speciesAreas$species,
-                          species2 = speciesAreas$species,
-                          niche_overlap_percent = 1)
+# land cover positions on PC1 (mean PC1 of the sites of each type) -------------
+legendCover <- c("Mediterranean California Red Fir Forest",
+                 "California Montane Jeffrey Pine-(Ponderosa Pine) Woodland",
+                 "Mediterranean California Mesic Mixed Conifer Forest and Woodland",
+                 "Mediterranean California Mixed Oak Woodland",
+                 "California Central Valley Mixed Oak Savanna")
+coverPC1 <- tibble(landcover = siteDataBuffers[[b]]$landcover_type, PC1 = pc1) %>%
+  filter(landcover %in% legendCover) %>%
+  group_by(landcover) %>%
+  dplyr::summarise(nSites = n(), PC1 = mean(PC1))
+stopifnot(nrow(coverPC1) == length(legendCover))
+coverPC1
 
-backwards <- data_frame(species1 = NicheRangeOverlapDot$species2,
-                      species2 = NicheRangeOverlapDot$species1,
-                      niche_overlap_percent = NicheRangeOverlapDot$niche_overlap_percent)
+# one colour range for the bars and the legend, wide enough for both
+pc1Lims <- range(c(speciesPC1$PC1, coverPC1$PC1))
 
-forwards <- data_frame(species1 = NicheRangeOverlapDot$species1,
-                      species2 = NicheRangeOverlapDot$species2,
-                      niche_overlap_percent = NicheRangeOverlapDot$niche_overlap_percent)
+# function: vertical colour bar legend, optional text labels to the right ------
+colour_legend <- function(lims, option, title, breaks, labels = NULL, textSize = 3.5) {
+  y <- seq(lims[1], lims[2], length.out = 200)
+  g <- ggplot() +
+    geom_tile(data = tibble(y = y), aes(x = 0.5, y = y, fill = y),
+              width = 1, height = diff(y[1:2]) * 1.02) +
+    scale_fill_viridis_c(option = option, limits = lims, guide = "none") +
+    scale_y_continuous(breaks = breaks, expand = c(0, 0)) +
+    scale_x_continuous(limits = c(0, if (is.null(labels)) 3 else 10), expand = c(0, 0)) +
+    labs(title = title) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(), axis.title = element_blank(),
+          axis.text.x = element_blank(), axis.text.y = element_text(size = 10),
+          axis.ticks.y = element_line(), plot.title = element_text(size = 12))
+  if (!is.null(labels))
+    g <- g + ggrepel::geom_text_repel(data = labels, aes(x = 1, y = PC1, label = landcover),
+                                      hjust = 0, direction = "y", nudge_x = 0.4,
+                                      xlim = c(1.2, NA), size = textSize,
+                                      segment.size = 0.2, min.segment.length = 0)
+  g
+}
 
-alloverlaps <- rbind(selfOverlap, backwards, forwards)
+# function: heatmap + bar plot for a set of species ----------------------------
+# Clustering is redone for each set of species.
+overlap_matrix_plot <- function(spp, b = "150", barWidth = 1, legendHeight = 0.2) {
+  pairs <- pairwiseOverlapsBuffers[[b]] %>%
+    filter(species1 %in% spp, species2 %in% spp) %>%
+    dplyr::select(species1, species2, overlap = percentOverlap_4D)
+  stopifnot(nrow(pairs) == choose(length(spp), 2))
 
-# fill gaps
-alloverlaps <- alloverlaps %>%
-  complete(species1, species2, fill = list(niche_overlap_percent = 0))
+  # both directions plus the diagonal (100% with itself)
+  allOverlaps <- bind_rows(pairs,
+                           rename(pairs, species1 = species2, species2 = species1),
+                           tibble(species1 = spp, species2 = spp, overlap = 100))
+  overlapMatrix <- acast(allOverlaps, species1 ~ species2, value.var = "overlap")
 
-# make an overlap matrix
-overlap_matrix <- acast(alloverlaps, species1 ~ species2, value.var = "niche_overlap_percent", fill = 0)
+  # hierarchical clustering on 1 - overlap
+  hc <- hclust(as.dist(1 - overlapMatrix / 100), method = "complete")
+  speciesOrder <- hc$labels[hc$order]
+  allOverlaps <- allOverlaps %>%
+    mutate(species1 = factor(species1, levels = speciesOrder),
+           species2 = factor(species2, levels = speciesOrder))
 
-# heirarchical clustering
-hc <- hclust(as.dist(1 - overlap_matrix), method = "complete")
-species_order <- hc$labels[hc$order]
+  vols <- speciesAreasBuffers[[b]] %>%
+    filter(species %in% spp) %>%
+    left_join(speciesPC1, by = "species") %>%
+    mutate(species = factor(species, levels = speciesOrder))
 
-# Reorder species1 and species2 based on desired order
-alloverlaps$species1 <- factor(alloverlaps$species1, levels = species_order)
-alloverlaps$species2 <- factor(alloverlaps$species2, levels = species_order)
+  heatmapPlot <- ggplot(allOverlaps, aes(x = species1, y = species2, fill = overlap)) +
+    geom_tile() +
+    scale_x_discrete(position = "top") +
+    scale_y_discrete(limits = rev(speciesOrder)) +
+    scale_fill_viridis_c(name = "Overlap (%)", limits = c(0, 100)) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 0),
+          legend.position = "none") +
+    xlab("") + ylab("")
 
-# plot percent overlap heatmap
-ggplot(alloverlaps, aes(x=species1, y=species2, fill=niche_overlap_percent)) +
-  geom_tile() +
-  scale_x_discrete(position = "top") +
-  scale_fill_viridis_c() +
-  coord_trans(y = "reverse") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0))
+  barPlot <- ggplot(vols, aes(y = species, x = volume4D, fill = PC1)) +
+    geom_col() +
+    scale_y_discrete(limits = rev(speciesOrder)) +
+    xlab("Acoustic-use space\n(4D volume)") +
+    scale_fill_viridis_c(option = "A", limits = pc1Lims) +
+    theme_minimal() +
+    theme(axis.text.y = element_blank(), axis.title.y = element_blank(),
+          legend.position = "none")
 
-# bar plot ---------------------------------------------------------------------
+  # legends under the figure
+  overlapLegend <- colour_legend(c(0, 100), "D", "Percent overlap of\nacoustic-use space",
+                                 breaks = seq(0, 100, 25))
+  pc1Legend <- colour_legend(pc1Lims, "A", "Species location along PC1\n(detection-weighted mean)",
+                             breaks = pretty(pc1Lims), labels = coverPC1)
+  legends <- plot_grid(overlapLegend, pc1Legend, NULL, nrow = 1, rel_widths = c(1.6, 4.5, 2))
 
-# calculate species centroids
-speciesCentroids <- st_centroid(speciesPolygons)
-spPC <- as.data.frame(st_coordinates(speciesCentroids))
-speciesCentroids <- cbind(speciesCentroids, spPC)
+  top <- plot_grid(heatmapPlot, barPlot, align = "h", axis = "tblr",
+                   rel_widths = c(8, barWidth))
+  list(heatmap = heatmapPlot, bar = barPlot, order = speciesOrder, legends = legends,
+       combined = plot_grid(top, legends, ncol = 1, rel_heights = c(1, legendHeight)))
+}
 
-# merge with areas
-speciesAreas_centroids <- merge(speciesAreas, speciesCentroids)
-  
-# reorder
-speciesAreas_centroids$species <- factor(speciesAreas_centroids$species, levels = species_order)
-
-# set color scheme
-speciesAreas_centroids$color <- rgb(scales::rescale(speciesAreas_centroids$X), scales::rescale(speciesAreas_centroids$Y), 0.5)
-
-# plot bar plot
-ggplot(speciesAreas_centroids, aes(y = species, x = area, fill=X)) +
-  geom_bar(stat="summary") +
-  scale_y_discrete(limits = rev(levels(speciesAreas_centroids$species))) +
-  xlab("Niche Area") +
-  scale_fill_viridis_c(option="A") +
-  theme_minimal() +
-  theme(axis.text.y = element_blank(), axis.title.y = element_blank())
-
-# save Heatmap plot
-heatmap_plot <- ggplot(alloverlaps, aes(x=species1, y=species2, fill=niche_overlap_percent)) +
-  geom_tile() +
-  scale_x_discrete(position = "top") +
-  scale_fill_viridis_c() +
-  coord_trans(y = "reverse") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0), legend.position = "none") +
-  xlab("") +
-  ylab("")
-
-
-# save Bar plot for NicheArea2
-bar_plot <- ggplot(speciesAreas_centroids, aes(y = species, x = area, fill=X)) +
-  geom_bar(stat="summary") +
-  scale_y_discrete(limits = rev(levels(speciesAreas_centroids$species))) +
-  xlab("Niche Area") +
-  scale_fill_viridis_c(option="A") +
-  theme_minimal() +
-  theme(axis.text.y = element_blank(), axis.title.y = element_blank(), legend.position = "none")
-
-# Align plots
-combined_plot <- plot_grid(
-  heatmap_plot,
-  bar_plot,
-  align = "h",
-  axis = "tblr",
-  rel_widths = c(8, 1)
-)
-
-combined_plot
-ggsave("Figure5_matrix.PDF", height=15, width=15)
-
+# all 89 species ---------------------------------------------------------------
+matrixAll <- overlap_matrix_plot(analysisSpecies, b)
+matrixAll$combined
+ggsave(paste0("Figure5_matrix_4D_buffer", b, "m_20261124.pdf"), matrixAll$combined,
+       height = 18, width = 15)
 
 # a reviewer asked for a simplified version with fewer species -----------------
+# Same species as before, minus Woodhouse's Scrub-Jay (excluded, section 20);
+# the two sapsuckers are now the complex.
+spSubset <- c("Pacific Wren", "Brown Creeper", "Red-breasted Nuthatch",
+              "Red-breasted/Red-naped Sapsucker", "White-headed Woodpecker",
+              "Townsend's Solitaire", "Yellow-rumped Warbler", "Hammond's Flycatcher",
+              "Hermit Warbler", "Hermit Thrush", "Golden-crowned Kinglet",
+              "Mountain Chickadee", "Olive-sided Flycatcher", "Cassin's Finch",
+              "Red Crossbill", "Green-tailed Towhee", "Dusky Flycatcher",
+              "California Quail", "California Towhee", "Oak Titmouse",
+              "Blue-gray Gnatcatcher", "Bewick's Wren", "Wrentit", "Nuttall's Woodpecker",
+              "Mourning Dove", "California Scrub-Jay", "Black Phoebe", "Acorn Woodpecker",
+              "Bushtit", "Black-headed Grosbeak", "Plumbeous Vireo", "Purple Finch",
+              "Cassin's Vireo", "Nashville Warbler", "Common Raven", "American Robin",
+              "Hairy Woodpecker", "Northern Flicker", "Steller's Jay", "Dark-eyed Junco",
+              "Western Tanager", "Western Wood-Pewee")
+missingSubset <- setdiff(spSubset, analysisSpecies)
+if (length(missingSubset) > 0) stop("Not in analysisSpecies: ", paste(missingSubset, collapse = ", "))
 
-# subset to fewer species ------------------------------------------------------
-spSubset <- c("Pacific.Wren", "Brown.Creeper", "Red.breasted.Nuthatch", "Red.breasted.Sapsucker", "Red.naped.Sapsucker", "White.headed.Woodpecker",
-              "Townsed.s.Solitaire", "Yellow.rumped.Warbler", "Hammond.s.Flycatcher", "Hermit.Warbler", "Hermit.Thrush", "Golden.crowned.Kinglet",
-              "Mountain.Chickadee", "Olive.sided.Flycatcher", "Cassin.s.Finch", "Red.Crossbill", "Green.Tailed.Towhee", "Dusky.Flycatcher",
-              "California.Quail", "California.Towhee", "Oak.Titmouse", "Blue.gray.Gnatcatcher", "Bewick.s.Wren", "Wrentit", "Nuttall.s.Woodpecker",
-              "Mourning.Dove", "California.Scrub.Jay", "Woodhouse.s.Scrub.Jay", "Black.Phoebe", "Acorn.Woodpecker", "Bushtit",
-              "Black.headed.Grosbeak", "Plumbeous.Vireo", "Purple.Finch", "Cassin.s.Vireo", "Nashville.Warbler", "Common.Raven", "American.Robin",
-              "Hairy.Woodpecker", "Northern.Flicker", "Steller.s.Jay", "Dark.eyed.Junco", "Western.Tanager", "Western.Wood.Pewee")
+matrixSub <- overlap_matrix_plot(spSubset, b, barWidth = 2, legendHeight = 0.35)
+matrixSub$combined
+ggsave(paste0("Figure5_matrix_4D_subset_buffer", b, "m_20261124.pdf"), matrixSub$combined,
+       height = 11, width = 11)
 
-NicheRangeOverlapDot <- NicheRangeOverlapDot[
-  NicheRangeOverlapDot$species1 %in% spSubset &
-    NicheRangeOverlapDot$species2 %in% spSubset,
-]
-
-speciesAreas <- speciesAreas[
-  speciesAreas$species %in% spSubset,
-]
-# then rerun earlier script 
-
-combined_plot <- plot_grid(
-  heatmap_plot,
-  bar_plot,
-  align = "h",
-  axis = "tblr",
-  rel_widths = c(9, 2)
-)
-
-combined_plot
-
-ggsave("Figure5_matrix_sup.PDF", height=8, width=9)
 
 ################################################################################
 # 26) Species details supp table
 ################################################################################
+# 24 Nov 2026. One row per species (the 92 species kept in section 9, 150 m
+# buffer), in the format of Table S1 (S1_speciesDetails in the Draft 7
+# Supplemental Tables.xlsx), with updated values:
+#   - totalDetections, totalSites: speciesCounts[["150"]] (section 9)
+#   - area_PC12, area_PC34: 2-D acoustic-use space areas, 150 m buffer
+#   - volume4D_50m, volume4D_150m, volume4D_300m: 4-D acoustic-use space
+#     volume for each buffer (speciesAreasBuffers, section 17)
+#   - genus (from the scientific name), family (AVONET eBird taxonomy,
+#     AnimalTraits/AVONET2_eBird.csv, matched by genus)
+#   - nCongeners: number of other analysis species in the same genus
+#   - rangeArea_km2_*: breeding range area in each extent (rangeAreas, section 18)
+#   - crossID_pctShared: % of the species' BirdNET detections shared with a
+#     congener in the same 3 s window (crossID, section 2); NA = no congener detected
+#   - inAnalysis: FALSE for Woodhouse's Scrub-Jay and the two sapsuckers
+#     (excludedSpecies, section 20)
+# BirdNET validation columns (n_samples to cutoff90.l_recall, added by Connor
+# 06 July 2026) are copied from the Draft 7 table. That table used dot names
+# (Bewick.s.Wren), so names are converted only to match; the output keeps the
+# normal names. Downy Woodpecker (dropped before because the old 2-D KDE failed
+# for it) and the sapsucker complex were not in that table, so they are NA
+# (the complex members are validated separately).
 
-# niche area
-# total # detections
-# total # sites
-# 06 July 2026 - Connor has added birdnet validation data to this table. do not overwrite.
+b <- "150"
+S1old <- readxl::read_excel(file.path(base_dir, "Draft 7_OikosRevision_20260629",
+                                      "Supplemental Tables.xlsx"),
+                            sheet = "S1_speciesDetails")
+validationCols <- c("n_samples", "intercept.l", "beta.l", "cutoff90.l",
+                    "cutoff90.l_precision", "cutoff90.l_recall")
+dot_name <- function(x) gsub("[^A-Za-z]", ".", x)  # old table used dot names
+validation <- S1old[c("species", validationCols)] %>% rename(dotName = species)
 
-setwd(file.path(base_dir, "Draft 2_PNAS"))
+# family by genus (AVONET, eBird taxonomy)
+avonet <- read_csv(file.path(base_dir, "AnimalTraits", "AVONET2_eBird.csv"),
+                   locale = locale(encoding = "latin1"), show_col_types = FALSE)
+families <- avonet %>%
+  transmute(genus = word(Species2, 1), family = Family2) %>%
+  distinct()
+# (a genus listed under two families would duplicate rows; the check below catches it)
 
+# 4-D volume for each buffer, wide
+volumesWide <- bind_rows(lapply(names(speciesAreasBuffers), function(bb)
+  speciesAreasBuffers[[bb]] %>% transmute(species, buffer = paste0("volume4D_", bb, "m"), volume4D))) %>%
+  pivot_wider(names_from = buffer, values_from = volume4D)
 
-speciesDetails <- merge(speciesAreas, speciesDetections)
-colnames(speciesDetails)[colnames(speciesDetails) == 'area'] <- 'nicheArea'
-speciesDetails <- merge(speciesDetails, speciesSites)
-write_rds(speciesDetails, "speciesDetails_20250708.rds")
-write_csv(speciesDetails, "speciesDetails_20250708.csv")
+speciesDetails <- speciesCounts[[b]] %>%
+  filter(keep) %>%
+  transmute(species = common_name, totalDetections, totalSites) %>%
+  left_join(dplyr::select(commonNames, species = common_name, scientific_name),
+            by = "species") %>%
+  mutate(inAnalysis = !species %in% excludedSpecies,
+         genus = word(scientific_name, 1)) %>%
+  left_join(families, by = "genus") %>%
+  group_by(genus) %>%
+  mutate(nCongeners = sapply(species, function(s) sum(species[inAnalysis] != s))) %>%
+  ungroup() %>%
+  left_join(dplyr::select(speciesAreasBuffers[[b]], species, area_PC12, area_PC34),
+            by = "species") %>%
+  left_join(volumesWide, by = "species") %>%
+  left_join(rename_with(rangeAreas, ~ sub("^area_km2_", "rangeArea_km2_", .x)),
+            by = "species") %>%
+  left_join(dplyr::select(crossID, species = common_name, crossID_pctShared = pct_shared),
+            by = "species") %>%
+  mutate(dotName = dot_name(species)) %>%
+  left_join(validation, by = "dotName") %>%
+  dplyr::select(species, scientific_name, genus, family, nCongeners, inAnalysis,
+                area_PC12, area_PC34, starts_with("volume4D_"),
+                totalDetections, totalSites, starts_with("rangeArea_km2_"),
+                crossID_pctShared, all_of(validationCols)) %>%
+  arrange(species)
 
+# checks
+stopifnot(nrow(speciesDetails) == n_distinct(speciesDetails$species),
+          sum(speciesDetails$inAnalysis) == length(analysisSpecies),
+          !anyNA(dplyr::select(speciesDetails, family, starts_with("volume4D_"))))
+setdiff(validation$dotName, dot_name(speciesDetails$species)) # old rows not matched (should be none)
+speciesDetails$species[is.na(speciesDetails$n_samples)]       # no validation data
 
+write_rds(speciesDetails, "speciesDetails_20261124.rds")
+write_csv(speciesDetails, "speciesDetails_20261124.csv")
 
-
-
+# RUNNING LEFT OFF HERE ######
