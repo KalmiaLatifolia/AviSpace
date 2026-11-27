@@ -31,32 +31,41 @@ library(mgcv)
 library(ks)      # weighted kernel density (section 15)
 
 # Table of contents ------------------------------------------------------------
-# 1) Processing ARU bioacoustic data - 72
-# 2) Species complexes and cross-identification - 146
-# 3) Adjust detection rates for day-of-year and year - 259
-# 4) Site buffers - 497
-# 5) Remove burned areas - 524
-# 6) Get 1 km habitat variables - 591
-# 7) add USGS CONUS GAP 2011 landcover type - 741
-# 8) which points are too close to each other? - 773
-# 9) remove species with insufficient data - 843
-# 10) make a nice map - 891
-# 11) check for colinearity - 934
-# 12) Niche Space PCA - 1045
-# 13) PCA loadings (supp figures) - 1086
-# 14) render landcover labels - 1165
-# 15) Species acoustic-use space: weighted 4-D kernel density - 1254
-# 16) plot 2 species acoustic-use space overlap (test plot) - 1407
-# 17) Species niche areas and pairwise overlaps: PC1 x PC2, PC3 x PC4 and 4-D - 1502
-# 18) Range areas and pairwise range overlaps - 1571
-# 19) Range overlap maps (two species) - 1769
-# 20) Combine range overlaps and niche overlaps - 1871
-# 21) Mixed effects models - 1967
-# 22) Leave-one-genus-out models (main dataset) - 2182
-# 23) permutation test - 2261
-# 24) Figure 4 acoustic-use space volumes - 2320
-# 25) Figure 5 - matrix - 2345
-# 26) Species details supp table - 2494
+# 1) Processing ARU bioacoustic data - 81
+# 2) Species complexes and cross-identification - 155
+# 3) Adjust detection rates for day-of-year and year - 268
+# 4) Site buffers - 506
+# 5) Remove burned areas - 533
+# 6) Get 1 km habitat variables - 600
+# 7) add USGS CONUS GAP 2011 landcover type - 750
+# 8) which points are too close to each other? - 782
+# 9) remove species with insufficient data - 852
+# 10) make a nice map - 900
+# 11) check for colinearity - 943
+# 12) Niche Space PCA - 1054
+# 13) PCA loadings (supp figures) - 1095
+# 14) render landcover labels - 1174
+# 15) Species acoustic-use space: weighted 4-D kernel density - 1263
+# 16) plot 2 species acoustic-use space overlap (test plot) - 1416
+# 17) Species niche areas and pairwise overlaps: PC1 x PC2, PC3 x PC4 and 4-D - 1511
+# 18) Range areas and pairwise range overlaps - 1580
+# 19) Range overlap maps (two species) - 1778
+# 20) Combine range overlaps and niche overlaps - 1880
+# 21) Mixed effects models - 1976
+# 22) Leave-one-genus-out models (main dataset) - 2191
+# 23) permutation test - 2268
+# 24) Figure 4 acoustic-use space volumes - 2327
+# 25) Figure 5 - matrix - 2352
+# 26) Species details supp table - 2501
+# 27) Phylogenetic distance - 2586
+# 28) Phylogenetic distance mixed models - 2677
+# 29) Leave-one-genus-out phylogenetic models (main dataset) - 2884
+# 30) Phylogenetic permutation test - 2936
+# 31) Divergence-class slope differences (main dataset) - 3009
+# 32) Composite figure: categorical models - 3068
+# 33) Divergence-class models: all 12 datasets - 3169
+# 34) Leave-one-genus-out divergence-class models (main dataset) - 3239
+# 35) Divergence-class permutation test - 3288
 
 
 # working directory  -----------------------------------------------------------
@@ -2571,4 +2580,759 @@ speciesDetails$species[is.na(speciesDetails$n_samples)]       # no validation da
 write_rds(speciesDetails, "speciesDetails_20261124.rds")
 write_csv(speciesDetails, "speciesDetails_20261124.csv")
 
-# RUNNING LEFT OFF HERE ######
+
+
+################################################################################
+# 27) Phylogenetic distance
+################################################################################
+# 24 Nov 2026. Replaces the congeneric/heterogeneric categories with a
+# continuous measure of relatedness: divergence time (Myr) between the two
+# species of each pair, from the Cornell Lab / Open Tree of Life avian
+# phylogeny (clootl; McTavish et al. 2025), summary (MCC) tree version 1.7 in
+# the 2025 eBird/Clements taxonomy. Divergence time = patristic distance / 2.
+# Install once: remotes::install_github("eliotmiller/clootl")
+# (the CRAN version can lag behind GitHub)
+library(clootl)  # must be attached: extractTree() loads its data with data()
+#
+# Our species names match the 2024 eBird/Clements taxonomy (also 2021-2023;
+# only the common names Pacific-slope Flycatcher and House Wren differ), which
+# defines the genera and congeneric pairs used in sections 20-23. The packaged
+# clootl tree (v1.7) is only available in the 2025 taxonomy, where three of our
+# species changed genus name (same species, same position in the tree):
+#   Coccothraustes vespertinus -> Hesperiphona vespertina (Evening Grosbeak)
+#   Dryobates villosus         -> Leuconotopicus villosus (Hairy Woodpecker)
+#   Dryobates albolarvatus     -> Leuconotopicus albolarvatus (White-headed Woodpecker)
+# The sapsucker complex uses Sphyrapicus ruber (Red-breasted and Red-naped
+# Sapsuckers diverged ~0.3 Myr ago, so distances to other species are the same).
+
+treeVersion <- "1.7"
+taxYear     <- "2025"
+
+# names as they appear in the tree ---------------------------------------------
+renamed2025 <- c("Coccothraustes vespertinus" = "Hesperiphona vespertina",
+                 "Dryobates villosus"         = "Leuconotopicus villosus",
+                 "Dryobates albolarvatus"     = "Leuconotopicus albolarvatus")
+treeNames <- commonNames %>%
+  filter(common_name %in% speciesCols) %>%
+  transmute(species = common_name, scientific_name,
+            tree_name = dplyr::recode(scientific_name, !!!renamed2025)) %>%
+  mutate(tree_name = ifelse(species == "Red-breasted/Red-naped Sapsucker",
+                            "Sphyrapicus ruber", tree_name))
+stopifnot(nrow(treeNames) == length(speciesCols), !anyDuplicated(treeNames$species))
+
+# extract the tree (stops if any name is not in the 2025 taxonomy) --------------
+birdTree <- extractTree(species = unique(treeNames$tree_name),
+                                label_type = "scientific",
+                                taxonomy_year = taxYear, version = treeVersion)
+ape::write.tree(birdTree, paste0("clootl_tree_v", treeVersion, "_tax", taxYear, "_20261124.tre"))
+
+# studies that contributed to this tree (needs internet), for the citation list
+treeCitations <- getCitations(birdTree, version = treeVersion)
+write_csv(treeCitations, paste0("clootl_citations_v", treeVersion, "_20261124.csv"))
+
+# pairwise divergence time (Myr) -----------------------------------------------
+divTime <- ape::cophenetic.phylo(birdTree) / 2
+
+nicheRangeOverlaps <- lapply(nicheRangeOverlaps, function(x) {
+  t1 <- treeNames$tree_name[match(x$species1, treeNames$species)]
+  t2 <- treeNames$tree_name[match(x$species2, treeNames$species)]
+  x$divergence_Myr <- divTime[cbind(t1, t2)]
+  stopifnot(!anyNA(x$divergence_Myr))
+  x
+})
+
+write_rds(nicheRangeOverlaps, "nicheRangeOverlaps_allBuffersExtents_phylo_20261124.rds")
+write_csv(bind_rows(nicheRangeOverlaps), "nicheRangeOverlaps_allBuffersExtents_phylo_20261124.csv")
+
+# check: divergence times of congeneric and heterogeneric pairs ---------------
+phyloCheck <- nicheRangeOverlaps[["buffer150m_full"]]
+phyloCheck %>%
+  group_by(congeneric) %>%
+  dplyr::summarise(n = n(), min = min(divergence_Myr), median = median(divergence_Myr),
+                   max = max(divergence_Myr))
+phyloCheck %>% filter(congeneric == "Same Genus") %>%
+  arrange(divergence_Myr) %>%
+  dplyr::select(species1, species2, divergence_Myr)
+
+ggplot(phyloCheck, aes(x = divergence_Myr, fill = congeneric)) +
+  geom_histogram(binwidth = 2, boundary = 0) +
+  scale_fill_manual(values = c("Same Genus" = "darkgreen", "Different Genus" = "purple4")) +
+  labs(x = "Divergence time (Myr)", y = "Number of species pairs", fill = "") +
+  theme_minimal() + theme(legend.position = "bottom")
+ggsave("FigureS_divergenceTimes_20261124.pdf", height = 4, width = 7)
+# same, log scale (close relatives spread out; deep splits less spread out)
+ggplot(phyloCheck, aes(x = divergence_Myr, fill = congeneric)) +
+  geom_histogram(bins = 50) +
+  scale_x_log10(breaks = c(0.5, 1, 2, 5, 10, 20, 50, 80),
+                labels = c(0.5, 1, 2, 5, 10, 20, 50, 80)) +
+  scale_y_log10() +
+  scale_fill_manual(values = c("Same Genus" = "darkgreen", "Different Genus" = "purple4")) +
+  labs(x = "Divergence time (Myr, log scale)", y = "Number of species pairs", fill = "") +
+  theme_minimal() + theme(legend.position = "bottom")
+ggsave("FigureS_divergenceTimes_log_20261124.pdf", height = 4, width = 7)
+
+
+
+################################################################################
+# 28) Phylogenetic distance mixed models
+################################################################################
+# 24 Nov 2026. As section 21, with divergence time (section 27) in place of the
+# congeneric/heterogeneric categories. The slope of range overlap on niche
+# overlap can change smoothly with log10 divergence time (natural spline), so
+# it can level off or drop below some divergence time instead of changing
+# linearly:
+#   range overlap ~ niche overlap * ns(log10 divergence time),
+#   random = ~ mm(species1 + species2)
+# - Spline knots are set by hand at 5, 15 and 40 Myr, with boundary knots at
+#   the shortest and longest divergence times, so the curve can bend among
+#   closely related pairs. Knots at quantiles would all fall among the deep
+#   splits, because most pairs diverged 20-85 Myr ago.
+# - The slope at divergence time d is b[niche] + sum_k b[niche:phy_k] * B_k(d),
+#   computed for every posterior draw.
+# - Summary contrast: slope at 5 Myr minus slope at 50 Myr (about the median
+#   divergence of congeneric and of heterogeneric pairs). Negative = the
+#   relationship is weaker among close relatives.
+# - Check of the spline: the same model with a separate slope for each
+#   divergence class (main dataset).
+# - Same 12 datasets, priors, MCMC settings and chain handling as section 21.
+#   Uses prior, mcmcSettings, nChains, p_from_draws() and ci() from section 21
+#   and nicheRangeOverlaps with divergence_Myr from section 27.
+
+phyKey      <- "buffer150m_full"
+phyKnots    <- log10(c(5, 15, 40))
+phyBoundary <- log10(range(nicheRangeOverlaps[[phyKey]]$divergence_Myr))
+contrastAt  <- c(5, 50)  # Myr
+
+divBreaks <- c(0, 5, 10, 20, 40, 60, Inf)
+divLabels <- c("lt5", "5to10", "10to20", "20to40", "40to60", "gt60")
+divNames  <- c("< 5", "5-10", "10-20", "20-40", "40-60", "> 60")
+
+# spline basis of log10 divergence time (same knots for every dataset)
+phy_basis <- function(d) {
+  B <- splines::ns(log10(d), knots = phyKnots, Boundary.knots = phyBoundary)
+  matrix(B, nrow = length(d), dimnames = list(NULL, paste0("phy", seq_len(ncol(B)))))
+}
+phyTerms <- colnames(phy_basis(contrastAt))
+
+# model data: as prep_model_data() (section 21) plus divergence time terms
+prep_phylo_data <- function(df) {
+  d <- df %>%
+    transmute(species1, species2, genus1, genus2,
+              congeneric = factor(congeneric, levels = c("Different Genus", "Same Genus")),
+              divergence_Myr,
+              divClass = cut(divergence_Myr, divBreaks, labels = divLabels),
+              niche_overlap_percent = percentOverlap_4D / 100,
+              range_overlap_percent = range_percentOverlap / 100) %>%
+    filter(!is.na(range_overlap_percent))
+  d <- bind_cols(d, as.data.frame(phy_basis(d$divergence_Myr)))
+  sp <- sort(unique(c(d$species1, d$species2)))
+  d$species1 <- factor(d$species1, levels = sp)
+  d$species2 <- factor(d$species2, levels = sp)
+  d
+}
+
+splineFormula <- as.formula(paste("range_overlap_percent ~ niche_overlap_percent * (",
+                                  paste(phyTerms, collapse = " + "), ")"))
+binFormula    <- range_overlap_percent ~ divClass + divClass:niche_overlap_percent
+
+fit_chains_phylo <- function(d, fixed) {
+  parallel::mclapply(seq_len(nChains), function(i) {
+    set.seed(i)
+    MCMCglmm(fixed, random = ~ mm(species1 + species2),
+             family = "gaussian", data = d, prior = prior,
+             nitt = mcmcSettings$nitt, burnin = mcmcSettings$burnin,
+             thin = mcmcSettings$thin, verbose = FALSE)
+  }, mc.cores = nChains)
+}
+
+# fit, or read the saved chains
+get_chains <- function(d, fixed, f) {
+  if (file.exists(f)) return(read_rds(f))
+  chains <- fit_chains_phylo(d, fixed)
+  write_rds(chains, f)
+  chains
+}
+
+# posterior slope at divergence times `grid` (draws x grid)
+slope_draws <- function(sol, grid) {
+  B  <- phy_basis(grid)
+  bI <- sol[, paste0("niche_overlap_percent:", phyTerms), drop = FALSE]
+  sweep(bI %*% t(B), 1, sol[, "niche_overlap_percent"], "+")
+}
+
+pooled_sol <- function(chains) do.call(rbind, lapply(chains, function(m) m$Sol))
+
+# slope curve with 95% CI
+slope_curve <- function(chains, grid) {
+  s <- slope_draws(pooled_sol(chains), grid)
+  tibble(divergence_Myr = grid, slope = colMeans(s),
+         lower = apply(s, 2, quantile, 0.025), upper = apply(s, 2, quantile, 0.975))
+}
+
+# summaries from a list of chains (text for the table, numbers for figures)
+summarise_phylo_chains <- function(chains) {
+  sol_list <- mcmc.list(lapply(chains, function(m) m$Sol))
+  sol <- pooled_sol(chains)
+  at  <- c(2, 5, 10, 20, 50)
+  s   <- slope_draws(sol, at)
+  con <- slope_draws(sol, contrastAt)
+  dlt <- con[, 1] - con[, 2]
+  out <- tibble(!!!setNames(lapply(seq_along(at), function(i) ci(s[, i])),
+                            paste0("slope_", at, "Myr")))
+  bind_cols(out, tibble(
+    contrast_5vs50Myr = ci(dlt), pMCMC = p_from_draws(dlt),
+    contrast_mean = mean(dlt), contrast_lower = quantile(dlt, 0.025),
+    contrast_upper = quantile(dlt, 0.975),
+    max_Rhat = round(max(gelman.diag(sol_list, multivariate = FALSE)$psrf[, "Point est."]), 3),
+    min_ESS = round(min(effectiveSize(sol_list)))))
+}
+
+# fit all 12 models ----------------------------------------------------(slooow)
+phyloChains <- list(); phyloResults <- list()
+for (k in names(nicheRangeOverlaps)) {
+  d <- prep_phylo_data(nicheRangeOverlaps[[k]])
+  phyloChains[[k]] <- get_chains(d, splineFormula,
+                                 paste0("MixedEffectsModel_phylo_", k, "_4chains_20261124.rds"))
+  phyloResults[[k]] <- bind_cols(
+    tibble(dataset = k, buffer_m = nicheRangeOverlaps[[k]]$buffer_m[1],
+           extent = nicheRangeOverlaps[[k]]$extent[1], nPairs = nrow(d)),
+    summarise_phylo_chains(phyloChains[[k]]))
+  message(k, " done")
+}
+
+
+phyloSummary <- bind_rows(phyloResults)
+phyloSummary %>% dplyr::select(dataset, slope_5Myr, slope_50Myr, contrast_5vs50Myr, pMCMC, max_Rhat)
+write_csv(phyloSummary, "MixedEffectsModels_phylo_summary_20261124.csv") # supplementary table
+
+# main model: convergence -------------------------------------------------------
+phyData   <- prep_phylo_data(nicheRangeOverlaps[[phyKey]])
+phyChains <- phyloChains[[phyKey]]
+sol_list  <- mcmc.list(lapply(phyChains, function(m) m$Sol))
+gelman.diag(sol_list, multivariate = FALSE)
+effectiveSize(sol_list)
+pdf(paste0("FigureS_tracePlots_phylo_", phyKey, "_20261124.pdf"), height = 11, width = 8.5)
+plot(sol_list)
+dev.off()
+
+# binned check (main dataset) ---------------------------------------------------
+binChains <- get_chains(phyData, binFormula,
+                        paste0("MixedEffectsModel_phyloBins_", phyKey, "_4chains_20261124.rds"))
+binSol <- pooled_sol(binChains)
+binSlopes <- tibble(divClass = factor(divLabels, levels = divLabels), name = divNames) %>%
+  left_join(phyData %>% group_by(divClass) %>%
+              dplyr::summarise(nPairs = n(), nCongeneric = sum(congeneric == "Same Genus"),
+                               x = exp(mean(log(divergence_Myr)))),  # geometric mean
+            by = "divClass") %>%
+  mutate(draws = lapply(divLabels, function(l) binSol[, paste0("divClass", l, ":niche_overlap_percent")]),
+         slope = sapply(draws, mean),
+         lower = sapply(draws, quantile, 0.025), upper = sapply(draws, quantile, 0.975),
+         slopeCI = sapply(draws, ci)) %>%
+  dplyr::select(-draws)
+binSlopes
+write_csv(binSlopes, "MixedEffectsModel_phyloBins_slopes_20261124.csv")
+
+# main figure: slope vs divergence time ---------------------------------------
+grid <- 10^seq(phyBoundary[1], phyBoundary[2], length.out = 200)
+curveMain <- slope_curve(phyChains, grid)
+mainSum   <- phyloResults[[phyKey]]
+conLabel  <- sprintf("Slope at 5 Myr minus slope at 50 Myr = %.2f [%.2f, %.2f], pMCMC = %.3f",
+                     mainSum$contrast_mean, mainSum$contrast_lower, mainSum$contrast_upper,
+                     mainSum$pMCMC)
+divBreaksAxis <- c(0.5, 1, 2, 5, 10, 20, 50, 80)
+
+ggplot() +
+  geom_hline(yintercept = 0, colour = "grey50") +
+  geom_ribbon(data = curveMain, aes(x = divergence_Myr, ymin = lower, ymax = upper),
+              fill = "grey70", alpha = 0.5) +
+  geom_line(data = curveMain, aes(x = divergence_Myr, y = slope), linewidth = 1) +
+  geom_pointrange(data = binSlopes, aes(x = x, y = slope, ymin = lower, ymax = upper),
+                  colour = "steelblue") +
+  geom_rug(data = phyData, aes(x = divergence_Myr, colour = congeneric),
+           sides = "b", alpha = 0.3, length = unit(0.03, "npc")) +
+  scale_colour_manual(values = c("Different Genus" = "purple", "Same Genus" = "darkgreen"),
+                      name = "") +
+  scale_x_log10(breaks = divBreaksAxis, labels = divBreaksAxis) +
+  annotate("text", x = min(grid), y = Inf, label = conLabel, hjust = 0, vjust = 1.5, size = 3) +
+  labs(x = "Divergence time (Myr, log scale)",
+       y = "Slope of range overlap on\nacoustic-use space overlap") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+ggsave(paste0("Figure_slopeByDivergence_", phyKey, "_20261124.pdf"), height = 5, width = 7)
+
+# supp figure: slope curves for all 12 datasets -----------------------------------
+curvesAll <- bind_rows(lapply(names(phyloChains), function(k)
+  slope_curve(phyloChains[[k]], grid) %>%
+    mutate(buffer = paste(nicheRangeOverlaps[[k]]$buffer_m[1], "m buffer"),
+           extent = nicheRangeOverlaps[[k]]$extent[1]))) %>%
+  mutate(buffer = factor(buffer, levels = paste(c(50, 150, 300), "m buffer")),
+         extent = factor(extent, levels = c("full", "NorthAm", "WestNA", "study")))
+ggplot(curvesAll, aes(x = divergence_Myr)) +
+  geom_hline(yintercept = 0, colour = "grey50") +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "grey70", alpha = 0.5) +
+  geom_line(aes(y = slope)) +
+  facet_grid(extent ~ buffer) +
+  scale_x_log10(breaks = divBreaksAxis, labels = divBreaksAxis) +
+  labs(x = "Divergence time (Myr, log scale)",
+       y = "Slope of range overlap on acoustic-use space overlap") +
+  theme_bw()
+ggsave("FigureS_slopeByDivergence_allDatasets_20261124.pdf", height = 9, width = 8)
+
+
+################################################################################
+# 29) Leave-one-genus-out phylogenetic models (main dataset)
+################################################################################
+# 24 Nov 2026. As section 22, for the section 28 spline model: each genus with
+# at least one congeneric pair is removed (its species and all their pairs)
+# and the model is refitted. Uses congenericGenera from section 22.
+
+phyLogoResults <- list(); phyLogoCurves <- list()
+for (g in congenericGenera) {
+  d <- nicheRangeOverlaps[[phyKey]] %>% filter(genus1 != g, genus2 != g) %>% prep_phylo_data()
+  chains <- get_chains(d, splineFormula,
+                       paste0("MixedEffectsModel_phylo_LOGO_", g, "_", phyKey, "_4chains_20261124.rds"))
+  phyLogoResults[[g]] <- bind_cols(
+    tibble(genusRemoved = g, nPairs = nrow(d), nCongeneric = sum(d$congeneric == "Same Genus"),
+           minDivergence_Myr = min(d$divergence_Myr)),
+    summarise_phylo_chains(chains))
+  phyLogoCurves[[g]] <- slope_curve(chains, grid) %>% mutate(genusRemoved = g)
+  message(g, " done")
+}
+
+phyLogoSummary <- bind_rows(
+  bind_cols(tibble(genusRemoved = "none (full model)", nPairs = nrow(phyData),
+                   nCongeneric = sum(phyData$congeneric == "Same Genus"),
+                   minDivergence_Myr = min(phyData$divergence_Myr)), mainSum[, -(1:4)]),
+  bind_rows(phyLogoResults))
+phyLogoSummary %>% dplyr::select(genusRemoved, slope_5Myr, contrast_5vs50Myr, pMCMC, max_Rhat)
+write_csv(phyLogoSummary, "MixedEffectsModels_phylo_leaveOneGenusOut_20261124.csv")
+
+# supp figure A: contrast with each genus removed
+phyLogoPlot <- bind_rows(phyLogoResults) %>%
+  mutate(genusRemoved = factor(genusRemoved, levels = rev(congenericGenera)))
+pA <- ggplot(phyLogoPlot, aes(x = contrast_mean, y = genusRemoved)) +
+  annotate("rect", xmin = mainSum$contrast_lower, xmax = mainSum$contrast_upper,
+           ymin = -Inf, ymax = Inf, fill = "grey85") +
+  geom_vline(xintercept = mainSum$contrast_mean, linetype = "dashed") +
+  geom_vline(xintercept = 0, colour = "grey40") +
+  geom_pointrange(aes(xmin = contrast_lower, xmax = contrast_upper)) +
+  labs(x = "Slope at 5 Myr minus slope at 50 Myr (95% CI)", y = "Genus removed") +
+  theme_minimal() +
+  theme(axis.text.y = element_text(face = "italic"))
+# supp figure B: slope curves with each genus removed (grey) and the full model (black)
+pB <- ggplot(bind_rows(phyLogoCurves), aes(x = divergence_Myr, y = slope)) +
+  geom_hline(yintercept = 0, colour = "grey50") +
+  geom_line(aes(group = genusRemoved), colour = "grey60") +
+  geom_line(data = curveMain, linewidth = 1) +
+  scale_x_log10(breaks = divBreaksAxis, labels = divBreaksAxis) +
+  labs(x = "Divergence time (Myr, log scale)", y = "Slope") +
+  theme_minimal()
+print(pA + pB + plot_annotation(tag_levels = "A"))
+ggsave("FigureS_leaveOneGenusOut_phylo_20261124.pdf", height = 6, width = 11)
+
+
+################################################################################
+# 30) Phylogenetic permutation test
+################################################################################
+# 24 Nov 2026. As section 23: could the change in slope with divergence time
+# arise by chance? Species are shuffled across the tips of the tree (each
+# species takes another species' position), divergence times are recalculated
+# for every pair, and the spline interaction is refitted with a linear model.
+# Two statistics:
+#   - contrast: slope at 5 Myr minus slope at 50 Myr (two-sided)
+#   - F: joint F statistic of the niche x divergence terms (any change in slope)
+# Main dataset. Uses phyData, phy_basis(), phyTerms and contrastAt from section 28.
+
+permPhyData <- phyData %>% mutate(species1 = as.character(species1),
+                                  species2 = as.character(species2))
+phySpecies  <- sort(unique(c(permPhyData$species1, permPhyData$species2)))
+
+# species x species divergence matrix
+divMatrix <- matrix(NA_real_, length(phySpecies), length(phySpecies),
+                    dimnames = list(phySpecies, phySpecies))
+divMatrix[cbind(permPhyData$species1, permPhyData$species2)] <- permPhyData$divergence_Myr
+divMatrix[cbind(permPhyData$species2, permPhyData$species1)] <- permPhyData$divergence_Myr
+
+phy_stats <- function(dv) {
+  B <- phy_basis(dv)
+  X <- data.frame(range = permPhyData$range_overlap_percent,
+                  niche = permPhyData$niche_overlap_percent, B)
+  full    <- lm(as.formula(paste("range ~ niche * (", paste(phyTerms, collapse = " + "), ")")), data = X)
+  reduced <- lm(as.formula(paste("range ~ niche + ", paste(phyTerms, collapse = " + "))), data = X)
+  b  <- coef(full)
+  Bc <- phy_basis(contrastAt)
+  s  <- b["niche"] + Bc %*% b[paste0("niche:", phyTerms)]
+  c(contrast = unname(s[1] - s[2]), F = anova(reduced, full)$F[2])
+}
+
+obsPhy <- phy_stats(permPhyData$divergence_Myr)
+obsPhy
+
+set.seed(1)
+nperm <- 5000
+nullPhy <- t(replicate(nperm, {
+  newPos <- setNames(sample(phySpecies), phySpecies)  # species -> another species' tip
+  phy_stats(divMatrix[cbind(newPos[permPhyData$species1], newPos[permPhyData$species2])])
+}))
+
+pPhy <- c(contrast = (sum(abs(nullPhy[, "contrast"]) >= abs(obsPhy["contrast"])) + 1) / (nperm + 1),
+          F        = (sum(nullPhy[, "F"] >= obsPhy["F"]) + 1) / (nperm + 1))
+pPhy
+
+write_rds(list(dataset = phyKey, observed = obsPhy, null = nullPhy, p = pPhy, nperm = nperm),
+          paste0("permutationTest_phylo_", phyKey, "_20261124.rds"))
+
+# supp figure
+permLong <- bind_rows(
+  tibble(stat = "Slope at 5 Myr minus slope at 50 Myr", value = nullPhy[, "contrast"],
+         obs = obsPhy["contrast"], p = pPhy["contrast"]),
+  tibble(stat = "F, niche x divergence terms", value = nullPhy[, "F"],
+         obs = obsPhy["F"], p = pPhy["F"]))
+permObs <- permLong %>% distinct(stat, obs, p) %>%
+  mutate(label = paste0("Observed = ", signif(obs, 2), ", p = ", signif(p, 2)))
+ggplot(permLong, aes(x = value)) +
+  geom_histogram(bins = 40, fill = "grey80", colour = "grey40", linewidth = 0.2) +
+  geom_vline(data = permObs, aes(xintercept = obs), colour = "red", linewidth = 1) +
+  geom_text(data = permObs, aes(x = Inf, y = Inf, label = label),
+            hjust = 1.05, vjust = 1.5, size = 3) +
+  facet_wrap(~ stat, scales = "free") +
+  labs(title = paste0("Permutation null, species shuffled across the tree (",
+                      format(nperm, big.mark = ","), " permutations)"),
+       x = "", y = "Frequency") +
+  theme_minimal()
+ggsave(paste0("FigureS_permutationTest_phylo_", phyKey, "_20261124.pdf"), height = 4, width = 9)
+
+
+
+################################################################################
+# 31) Divergence-class slope differences (main dataset)
+################################################################################
+# 25 Nov 2026. Uses the binned model from section 28 (binChains, binSlopes; no
+# refitting). Pairs that diverged < 5 Myr ago (19 pairs, all congeneric) are the
+# class of interest. For each posterior draw:
+#   - slope (< 5 Myr) minus slope of each other divergence class
+#   - slope (< 5 Myr) minus the other classes pooled, two ways: the mean of the
+#     five class slopes, and the mean weighted by number of pairs per class
+#   - P(slope < 5 Myr is below 0)
+# pMCMC as in section 21. The pooled comparisons are the main result; the five
+# class-by-class comparisons are shown for completeness (not corrected for
+# multiple comparisons).
+
+# convergence of the binned model
+binSolList <- mcmc.list(lapply(binChains, function(m) m$Sol))
+round(max(gelman.diag(binSolList, multivariate = FALSE)$psrf[, "Point est."]), 3)
+round(min(effectiveSize(binSolList)))
+
+# slope draws per class (draws x classes)
+binSol   <- pooled_sol(binChains)
+binDraws <- sapply(divLabels, function(l) binSol[, paste0("divClass", l, ":niche_overlap_percent")])
+colnames(binDraws) <- divLabels
+otherBins <- divLabels[-1]
+otherW    <- binSlopes$nPairs[match(otherBins, binSlopes$divClass)]
+otherW    <- otherW / sum(otherW)
+
+lt5 <- binDraws[, "lt5"]
+binDiffDraws <- c(
+  list("Other classes pooled (mean of class slopes)" = lt5 - rowMeans(binDraws[, otherBins]),
+       "Other classes pooled (weighted by pairs)"    = lt5 - as.vector(binDraws[, otherBins] %*% otherW)),
+  setNames(lapply(otherBins, function(l) lt5 - binDraws[, l]),
+           paste(divNames[-1], "Myr")))
+
+binDiffs <- tibble(comparison = paste("< 5 Myr minus", names(binDiffDraws)),
+                   difference = sapply(binDiffDraws, ci),
+                   mean  = sapply(binDiffDraws, mean),
+                   lower = sapply(binDiffDraws, quantile, 0.025),
+                   upper = sapply(binDiffDraws, quantile, 0.975),
+                   pMCMC = sapply(binDiffDraws, p_from_draws),
+                   P_lt5_lower = sapply(binDiffDraws, function(x) mean(x < 0)))
+binDiffs
+c(slope_lt5 = ci(lt5), P_slope_below_0 = mean(lt5 < 0), pMCMC_vs_0 = p_from_draws(lt5))
+write_csv(binDiffs, "MixedEffectsModel_phyloBins_differences_20261125.csv")
+
+# supp figure
+ggplot(binDiffs, aes(x = mean, y = factor(comparison, levels = rev(comparison)))) +
+  geom_vline(xintercept = 0, colour = "grey40") +
+  geom_pointrange(aes(xmin = lower, xmax = upper)) +
+  geom_text(aes(x = upper, label = paste0("pMCMC = ", signif(pMCMC, 2))),
+            hjust = -0.15, size = 3) +
+  scale_x_continuous(expand = expansion(mult = c(0.05, 0.3))) +
+  labs(x = "Difference in slope, pairs diverged < 5 Myr ago minus other pairs (95% CI)",
+       y = "") +
+  theme_minimal()
+ggsave("FigureS_divergenceClassDifferences_buffer150m_full_20261125.pdf", height = 4, width = 8)
+
+
+
+################################################################################
+# 32) Composite figure: categorical models
+################################################################################
+# 27 Nov 2026. One figure for the categorical (congeneric vs heterogeneric)
+# results paragraph, main dataset (150 m buffer, full breeding ranges):
+#   A) range overlap vs acoustic-use space overlap, fitted lines (section 21)
+#   B) leave-one-genus-out slope differences (section 22)
+#   C) permutation null for the slope difference (section 23)
+# Reads the saved section 21-23 outputs, so sections 21-23 do not need to be
+# rerun. Uses prep_model_data(), p_from_draws() and nicheRangeOverlaps.
+
+catKey   <- "buffer150m_full"
+catData  <- prep_model_data(nicheRangeOverlaps[[catKey]])
+catSol   <- do.call(rbind, lapply(read_rds(paste0("MixedEffectsModel_", catKey, "_4chains_20261124.rds")),
+                                  function(m) m$Sol))
+catLogo  <- read_csv("MixedEffectsModels_leaveOneGenusOut_20261124.csv", show_col_types = FALSE)
+catPerm  <- read_rds(paste0("permutationTest_", catKey, "_20261124.rds"))
+groupCol <- c("Different Genus" = "purple", "Same Genus" = "darkgreen")
+
+# A) fitted lines with 95% credible bands -------------------------------------
+xseq <- seq(0, max(catData$niche_overlap_percent), length.out = 100)
+b0 <- list("Different Genus" = catSol[, "(Intercept)"],
+           "Same Genus"      = catSol[, "(Intercept)"] + catSol[, "congenericSame Genus"])
+b1 <- list("Different Genus" = catSol[, "niche_overlap_percent"],
+           "Same Genus"      = catSol[, "niche_overlap_percent"] +
+                               catSol[, "niche_overlap_percent:congenericSame Genus"])
+catLines <- bind_rows(lapply(names(b0), function(g) {
+  p <- sapply(xseq, function(x) b0[[g]] + b1[[g]] * x)
+  tibble(x = xseq, congeneric = g, fit = colMeans(p),
+         lower = apply(p, 2, quantile, 0.025), upper = apply(p, 2, quantile, 0.975))
+}))
+slopeDiff <- b1[["Same Genus"]] - b1[["Different Genus"]]
+fmt <- function(x) sprintf("%.2f [%.2f, %.2f]", mean(x), quantile(x, 0.025), quantile(x, 0.975))
+catText <- c(paste("Different genus: slope =", fmt(b1[["Different Genus"]])),
+             paste("Same genus: slope =", fmt(b1[["Same Genus"]])),
+             paste0("Difference = ", fmt(slopeDiff), ", pMCMC = ", signif(p_from_draws(slopeDiff), 2)))
+
+# example pairs to label
+examplePairs <- catData %>%
+  filter((species1 == "Red-breasted Nuthatch" & species2 == "Yellow-rumped Warbler") |
+         (species1 == "Cassin's Vireo" & species2 == "Plumbeous Vireo") |
+         (species1 == "Hermit Thrush" & species2 == "Swainson's Thrush")) %>%
+  mutate(label = paste(species1, "/\n", species2),
+         nx = ifelse(species1 == "Hermit Thrush", 0.12, 0),   # keep clear of the slope text
+         ny = ifelse(species1 == "Hermit Thrush", -0.04, 0.12))
+
+panelA <- ggplot(catData, aes(x = niche_overlap_percent, y = range_overlap_percent)) +
+  geom_point(data = filter(catData, congeneric == "Different Genus"),
+             colour = groupCol["Different Genus"], alpha = 0.12, size = 0.6) +
+  geom_point(data = filter(catData, congeneric == "Same Genus"),
+             colour = groupCol["Same Genus"], size = 1.6) +
+  geom_ribbon(data = catLines, aes(x = x, ymin = lower, ymax = upper, fill = congeneric),
+              inherit.aes = FALSE, alpha = 0.25) +
+  geom_line(data = catLines, aes(x = x, y = fit, colour = congeneric), linewidth = 1) +
+  geom_point(data = examplePairs, shape = 21, size = 3, colour = "black", fill = NA, stroke = 0.8) +
+  ggrepel::geom_text_repel(data = examplePairs, aes(label = label), size = 2.8,
+                           min.segment.length = 0, box.padding = 0.6,
+                           nudge_x = examplePairs$nx, nudge_y = examplePairs$ny) +
+  annotate("text", x = 0, y = c(1.06, 1.00, 0.94), label = catText, hjust = 0, size = 3,
+           colour = c(groupCol, "black")) +
+  scale_colour_manual(values = groupCol, name = "") +
+  scale_fill_manual(values = groupCol, name = "") +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1), breaks = seq(0, 1, 0.25)) +
+  coord_cartesian(ylim = c(0, 1.08)) +
+  labs(x = "Acoustic-use space overlap", y = "Breeding range overlap") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# B) leave-one-genus-out --------------------------------------------------------
+logoFull  <- filter(catLogo, genusRemoved == "none (full model)")
+logoGenus <- filter(catLogo, genusRemoved != "none (full model)") %>%
+  mutate(genusRemoved = factor(genusRemoved, levels = rev(sort(genusRemoved))))
+panelB <- ggplot(logoGenus, aes(x = diff_mean, y = genusRemoved)) +
+  annotate("rect", xmin = logoFull$diff_lower, xmax = logoFull$diff_upper,
+           ymin = -Inf, ymax = Inf, fill = "grey88") +
+  geom_vline(xintercept = logoFull$diff_mean, linetype = "dashed") +
+  geom_vline(xintercept = 0, colour = "grey40") +
+  geom_pointrange(aes(xmin = diff_lower, xmax = diff_upper), colour = groupCol["Same Genus"],
+                  size = 0.25) +
+  labs(x = "Difference in slopes (same minus different genus)", y = "Genus removed") +
+  theme_minimal() +
+  theme(axis.text.y = element_text(face = "italic", size = 8))
+
+# C) permutation null -------------------------------------------------------------
+panelC <- ggplot(tibble(null = catPerm$null), aes(x = null)) +
+  geom_histogram(bins = 40, fill = "grey80", colour = "grey40", linewidth = 0.2) +
+  geom_vline(xintercept = catPerm$observed, colour = "red", linewidth = 1) +
+  annotate("text", x = Inf, y = Inf, hjust = 1.05, vjust = 1.5, size = 3,
+           label = paste0("Observed (linear model) = ", round(catPerm$observed, 2), "\np = ", signif(catPerm$p, 2),
+                          " (", format(catPerm$nperm, big.mark = ","), " permutations)")) +
+  labs(x = "Difference in slopes, genus labels shuffled", y = "Frequency") +
+  theme_minimal()
+
+panelA + (panelB / panelC + plot_layout(heights = c(1.3, 1))) +
+  plot_layout(widths = c(1.4, 1)) +
+  plot_annotation(tag_levels = "A")
+ggsave("Figure8_categoricalModels_buffer150m_full_20261127.pdf", height = 7, width = 12)
+
+
+### RUNNING LEFT OFF HERE ###
+
+################################################################################
+# 33) Divergence-class models: all 12 datasets
+################################################################################
+# 27 Nov 2026. Robustness checks for the section 31 result (pairs that diverged
+# < 5 Myr ago have a lower slope than all other pairs). Sections 33-35 use the
+# section 28 divergence-class model (binFormula, prep_phylo_data(), get_chains(),
+# pooled_sol(), divLabels) and the section 21 helpers (ci(), p_from_draws()).
+# Two pooled contrasts, as in section 31:
+#   diffMean     = slope (< 5 Myr) minus the mean of the other five class slopes
+#   diffWeighted = slope (< 5 Myr) minus the other class slopes weighted by
+#                  number of pairs
+# Section 33 fits the divergence-class model to all 12 datasets (the main
+# dataset's chains from section 28 are re-read, not refitted).
+
+# contrasts from a list of chains -------------------------------------------------
+bin_contrasts <- function(chains, d) {
+  sol_list <- mcmc.list(lapply(chains, function(m) m$Sol))
+  sol <- pooled_sol(chains)
+  dr  <- sapply(divLabels, function(l) sol[, paste0("divClass", l, ":niche_overlap_percent")])
+  colnames(dr) <- divLabels
+  others <- divLabels[-1]
+  w <- as.numeric(table(factor(d$divClass, levels = divLabels))[others]); w <- w / sum(w)
+  lt5   <- dr[, "lt5"]
+  dMean <- lt5 - rowMeans(dr[, others])
+  dW    <- lt5 - as.vector(dr[, others] %*% w)
+  tibble(nPairs_lt5 = sum(d$divClass == "lt5"),
+         slope_lt5 = ci(lt5), P_lt5_below0 = mean(lt5 < 0),
+         diffMean = ci(dMean), pMCMC_diffMean = p_from_draws(dMean),
+         diffMean_mean = mean(dMean), diffMean_lower = quantile(dMean, 0.025),
+         diffMean_upper = quantile(dMean, 0.975),
+         diffWeighted = ci(dW), pMCMC_diffWeighted = p_from_draws(dW),
+         diffWeighted_mean = mean(dW), diffWeighted_lower = quantile(dW, 0.025),
+         diffWeighted_upper = quantile(dW, 0.975),
+         max_Rhat = round(max(gelman.diag(sol_list, multivariate = FALSE)$psrf[, "Point est."]), 3),
+         min_ESS = round(min(effectiveSize(sol_list))))
+}
+
+# fit all 12 (slooow: 11 new models) ------------------------------------------------
+binResults <- list()
+for (k in names(nicheRangeOverlaps)) {
+  d <- prep_phylo_data(nicheRangeOverlaps[[k]])
+  chains <- get_chains(d, binFormula,
+                       paste0("MixedEffectsModel_phyloBins_", k, "_4chains_20261124.rds"))
+  binResults[[k]] <- bind_cols(
+    tibble(dataset = k, buffer_m = nicheRangeOverlaps[[k]]$buffer_m[1],
+           extent = nicheRangeOverlaps[[k]]$extent[1], nPairs = nrow(d)),
+    bin_contrasts(chains, d))
+  message(k, " done")
+}
+binSummary <- bind_rows(binResults)
+binSummary %>% dplyr::select(dataset, slope_lt5, diffMean, pMCMC_diffMean,
+                             diffWeighted, pMCMC_diffWeighted, max_Rhat)
+write_csv(binSummary, "MixedEffectsModels_phyloBins_allDatasets_20261127.csv") # supplementary table
+
+# supp figure: pooled contrasts for each dataset
+binSummaryLong <- bind_rows(
+  binSummary %>% transmute(dataset, contrast = "Mean of other class slopes",
+                           mean = diffMean_mean, lower = diffMean_lower, upper = diffMean_upper),
+  binSummary %>% transmute(dataset, contrast = "Weighted by number of pairs",
+                           mean = diffWeighted_mean, lower = diffWeighted_lower, upper = diffWeighted_upper)) %>%
+  mutate(dataset = factor(dataset, levels = rev(names(nicheRangeOverlaps))))
+ggplot(binSummaryLong, aes(x = mean, y = dataset, colour = contrast)) +
+  geom_vline(xintercept = 0, colour = "grey40") +
+  geom_pointrange(aes(xmin = lower, xmax = upper), position = position_dodge(width = 0.6)) +
+  scale_colour_manual(values = c("black", "steelblue"), name = "") +
+  labs(x = "Slope (< 5 Myr) minus slope of other pairs (95% CI)", y = "") +
+  theme_minimal() + theme(legend.position = "bottom")
+ggsave("FigureS_divergenceClass_allDatasets_20261127.pdf", height = 6, width = 7)
+
+
+################################################################################
+# 34) Leave-one-genus-out divergence-class models (main dataset)
+################################################################################
+# 27 Nov 2026. As section 22, for the divergence-class model: each genus with
+# at least one congeneric pair is removed (its species and all their pairs) and
+# the model is refitted. Uses congenericGenera (section 22) and phyKey (section 28).
+
+binMainData   <- prep_phylo_data(nicheRangeOverlaps[[phyKey]])
+binMainResult <- binResults[[phyKey]]
+binLogoResults <- list()
+for (g in congenericGenera) {
+  d <- nicheRangeOverlaps[[phyKey]] %>% filter(genus1 != g, genus2 != g) %>% prep_phylo_data()
+  chains <- get_chains(d, binFormula,
+                       paste0("MixedEffectsModel_phyloBins_LOGO_", g, "_", phyKey, "_4chains_20261127.rds"))
+  binLogoResults[[g]] <- bind_cols(
+    tibble(genusRemoved = g, nPairs = nrow(d), nCongeneric = sum(d$congeneric == "Same Genus")),
+    bin_contrasts(chains, d))
+  message(g, " done")
+}
+binLogoSummary <- bind_rows(
+  bind_cols(tibble(genusRemoved = "none (full model)", nPairs = nrow(binMainData),
+                   nCongeneric = sum(binMainData$congeneric == "Same Genus")),
+            binMainResult[, -(1:4)]),
+  bind_rows(binLogoResults))
+binLogoSummary %>% dplyr::select(genusRemoved, nPairs_lt5, slope_lt5, diffMean, pMCMC_diffMean,
+                                 diffWeighted, pMCMC_diffWeighted, max_Rhat)
+write_csv(binLogoSummary, "MixedEffectsModels_phyloBins_leaveOneGenusOut_20261127.csv")
+
+# supp figure
+binLogoLong <- bind_rows(
+  bind_rows(binLogoResults) %>% transmute(genusRemoved, contrast = "Mean of other class slopes",
+                                          mean = diffMean_mean, lower = diffMean_lower, upper = diffMean_upper),
+  bind_rows(binLogoResults) %>% transmute(genusRemoved, contrast = "Weighted by number of pairs",
+                                          mean = diffWeighted_mean, lower = diffWeighted_lower, upper = diffWeighted_upper)) %>%
+  mutate(genusRemoved = factor(genusRemoved, levels = rev(congenericGenera)))
+ggplot(binLogoLong, aes(x = mean, y = genusRemoved, colour = contrast)) +
+  annotate("rect", xmin = binMainResult$diffMean_lower, xmax = binMainResult$diffMean_upper,
+           ymin = -Inf, ymax = Inf, fill = "grey88") +
+  geom_vline(xintercept = binMainResult$diffMean_mean, linetype = "dashed") +
+  geom_vline(xintercept = 0, colour = "grey40") +
+  geom_pointrange(aes(xmin = lower, xmax = upper), position = position_dodge(width = 0.6), size = 0.3) +
+  scale_colour_manual(values = c("black", "steelblue"), name = "") +
+  labs(x = "Slope (< 5 Myr) minus slope of other pairs (95% CI)", y = "Genus removed",
+       caption = "Grey band and dashed line: full model, mean of other class slopes") +
+  theme_minimal() +
+  theme(axis.text.y = element_text(face = "italic"), legend.position = "bottom")
+ggsave("FigureS_leaveOneGenusOut_divergenceClass_20261127.pdf", height = 6, width = 7)
+
+
+################################################################################
+# 35) Divergence-class permutation test
+################################################################################
+# 27 Nov 2026. As section 30, for the divergence-class contrasts: species are
+# shuffled across the tips of the tree, divergence times and classes are
+# recalculated for every pair (each class keeps the same number of pairs), and
+# the class slopes are refitted with a linear model. Two-sided p-values.
+# Uses permPhyData, divMatrix and phySpecies from section 30.
+
+bin_stats <- function(dv) {
+  cls <- cut(dv, divBreaks, labels = divLabels)
+  X <- data.frame(range = permPhyData$range_overlap_percent,
+                  niche = permPhyData$niche_overlap_percent, cls = cls)
+  b <- coef(lm(range ~ cls + cls:niche, data = X))[paste0("cls", divLabels, ":niche")]
+  w <- as.numeric(table(cls)[divLabels[-1]]); w <- w / sum(w)
+  c(diffMean = unname(b[1] - mean(b[-1])), diffWeighted = unname(b[1] - sum(b[-1] * w)))
+}
+
+obsBin <- bin_stats(permPhyData$divergence_Myr)
+obsBin
+
+set.seed(1)
+nperm <- 5000
+nullBin <- t(replicate(nperm, {
+  newPos <- setNames(sample(phySpecies), phySpecies)
+  bin_stats(divMatrix[cbind(newPos[permPhyData$species1], newPos[permPhyData$species2])])
+}))
+pBin <- sapply(names(obsBin), function(s)
+  (sum(abs(nullBin[, s]) >= abs(obsBin[s])) + 1) / (nperm + 1))
+pBin
+
+write_rds(list(dataset = phyKey, observed = obsBin, null = nullBin, p = pBin, nperm = nperm),
+          paste0("permutationTest_phyloBins_", phyKey, "_20261127.rds"))
+
+# supp figure
+binPermLong <- bind_rows(
+  tibble(stat = "Mean of other class slopes", value = nullBin[, "diffMean"],
+         obs = obsBin["diffMean"], p = pBin["diffMean"]),
+  tibble(stat = "Weighted by number of pairs", value = nullBin[, "diffWeighted"],
+         obs = obsBin["diffWeighted"], p = pBin["diffWeighted"]))
+binPermObs <- binPermLong %>% distinct(stat, obs, p) %>%
+  mutate(label = paste0("Observed (linear model) = ", signif(obs, 2), "\np = ", signif(p, 2)))
+ggplot(binPermLong, aes(x = value)) +
+  geom_histogram(bins = 40, fill = "grey80", colour = "grey40", linewidth = 0.2) +
+  geom_vline(data = binPermObs, aes(xintercept = obs), colour = "red", linewidth = 1) +
+  geom_text(data = binPermObs, aes(x = Inf, y = Inf, label = label), hjust = 1.05, vjust = 1.3, size = 3) +
+  facet_wrap(~ stat) +
+  labs(title = paste0("Slope (< 5 Myr) minus slope of other pairs: species shuffled across the tree (",
+                      format(nperm, big.mark = ","), " permutations)"),
+       x = "Difference in slopes", y = "Frequency") +
+  theme_minimal() + theme(plot.title = element_text(size = 10))
+ggsave(paste0("FigureS_permutationTest_divergenceClass_", phyKey, "_20261127.pdf"), height = 4, width = 9)
